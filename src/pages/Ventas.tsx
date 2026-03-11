@@ -8,11 +8,19 @@ interface Venta {
     id: string;
     numero: string;
     fecha: string;
-    cliente: { razon_social: string };
+    cliente: { razon_social: string; cuit: string };
     vendedor: { nombre: string; apellido: string };
     estado: 'presupuesto' | 'confirmada' | 'preparando' | 'lista' | 'entregada' | 'cancelada';
     total: number;
     tipo_comprobante: string;
+}
+
+interface VentaItem {
+    id: string;
+    cantidad: number;
+    precio_unitario: number;
+    subtotal: number;
+    productos: { nombre: string; codigo: string } | null;
 }
 
 interface Cliente {
@@ -31,6 +39,12 @@ const Ventas: React.FC = () => {
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [vendedores, setVendedores] = useState<Vendedor[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Modal state
+    const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null);
+    const [ventaItems, setVentaItems] = useState<VentaItem[]>([]);
+    const [itemsLoading, setItemsLoading] = useState(false);
+    const [showModal, setShowModal] = useState(false);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -52,7 +66,7 @@ const Ventas: React.FC = () => {
                 .from('ventas')
                 .select(`
                     id, numero, fecha, estado, total, tipo_comprobante,
-                    cliente:cliente_id (razon_social),
+                    cliente:cliente_id (razon_social, cuit),
                     vendedor:vendedor_id (nombre, apellido)
                 `)
                 .order('fecha', { ascending: false });
@@ -71,6 +85,42 @@ const Ventas: React.FC = () => {
             setLoading(false);
         }
     }, [statusFilter, clienteFilter, vendedorFilter, searchTerm]);
+
+    const handleOpenModal = async (venta: Venta) => {
+        setSelectedVenta(venta);
+        setShowModal(true);
+        setItemsLoading(true);
+        setVentaItems([]);
+
+        try {
+            const { data, error } = await supabase
+                .from('venta_items')
+                .select(`
+                    id, 
+                    cantidad, 
+                    precio_unitario, 
+                    subtotal,
+                    productos:producto_id (
+                        nombre, 
+                        codigo
+                    )
+                `)
+                .eq('venta_id', venta.id);
+
+            if (error) throw error;
+            setVentaItems(data as any[] || []);
+        } catch (err) {
+            console.error('Error fetching items:', err);
+        } finally {
+            setItemsLoading(false);
+        }
+    };
+
+    const handleCloseModal = () => {
+        setShowModal(false);
+        setSelectedVenta(null);
+        setVentaItems([]);
+    };
 
     useEffect(() => {
         fetchData();
@@ -202,7 +252,10 @@ const Ventas: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 text-sm font-black text-slate-900 dark:text-white">$ {Number(v.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
                                             <td className="px-6 py-4 text-center">
-                                                <button className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-all active:scale-90 group/btn">
+                                                <button 
+                                                    onClick={() => handleOpenModal(v)}
+                                                    className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-all active:scale-90 group/btn"
+                                                >
                                                     <span className="material-symbols-outlined group-hover/btn:scale-110 transition-transform">visibility</span>
                                                 </button>
                                             </td>
@@ -212,21 +265,119 @@ const Ventas: React.FC = () => {
                             </tbody>
                         </table>
                     </div>
-                    {/* Pagination Placeholder */}
-                    <div className="px-6 py-4 bg-slate-50/50 dark:bg-zinc-800/10 flex items-center justify-between border-t border-slate-100 dark:border-zinc-800">
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Mostrando {ventas.length} registros</p>
-                        <div className="flex items-center gap-1">
-                            <button className="p-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 hover:text-primary transition-colors disabled:opacity-50" disabled>
-                                <span className="material-symbols-outlined text-sm">chevron_left</span>
+                </div>
+            </div>
+
+            {/* Venta Detail Modal */}
+            {showModal && selectedVenta && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 w-full max-w-4xl max-h-[90vh] rounded-[40px] shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                        
+                        {/* Modal Header */}
+                        <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-start bg-slate-50/50 dark:bg-zinc-800/30">
+                            <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full">Comprobante de Venta</span>
+                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusColor(selectedVenta.estado)}`}>
+                                        {selectedVenta.estado}
+                                    </span>
+                                </div>
+                                <h2 className="text-3xl font-black uppercase tracking-tighter text-slate-900 dark:text-white">ORDEN #{selectedVenta.numero}</h2>
+                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{new Date(selectedVenta.fecha).toLocaleString()}</p>
+                            </div>
+                            <button 
+                                onClick={handleCloseModal}
+                                className="size-12 rounded-2xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-all active:scale-90"
+                            >
+                                <span className="material-symbols-outlined">close</span>
                             </button>
-                            <button className="size-8 rounded flex items-center justify-center bg-primary text-white text-[10px] font-black shadow-md shadow-primary/20">1</button>
-                            <button className="p-1 rounded bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-400 hover:text-primary transition-colors disabled:opacity-50" disabled>
-                                <span className="material-symbols-outlined text-sm">chevron_right</span>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                            
+                            {/* Client & Info Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-6 bg-slate-50 dark:bg-zinc-800/50 rounded-3xl border border-slate-100 dark:border-zinc-800">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Cliente</label>
+                                    <p className="font-black text-slate-900 dark:text-white uppercase leading-tight">{selectedVenta.cliente?.razon_social}</p>
+                                    <p className="text-[10px] font-bold text-slate-500 mt-1">CUIT: {selectedVenta.cliente?.cuit || 'S/D'}</p>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Vendedor</label>
+                                    <p className="font-black text-slate-900 dark:text-white uppercase leading-tight">
+                                        {selectedVenta.vendedor ? `${selectedVenta.vendedor.nombre} ${selectedVenta.vendedor.apellido}` : 'Sistema'}
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Tipo de Comprobante</label>
+                                    <p className="font-black text-primary uppercase leading-tight">{selectedVenta.tipo_comprobante || 'PRESUPUESTO'}</p>
+                                </div>
+                            </div>
+
+                            {/* Items Table */}
+                            <div>
+                                <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 mb-4 ml-2">Detalle de Productos</h3>
+                                <div className="rounded-3xl border border-slate-100 dark:border-zinc-800 overflow-hidden min-h-[100px]">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="bg-slate-50 dark:bg-zinc-800/80">
+                                            <tr>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Producto</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Cant.</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Unitario</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                                            {itemsLoading ? (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">
+                                                        <div className="flex flex-col items-center gap-2">
+                                                            <div className="size-5 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest">Cargando ítems...</p>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ) : ventaItems.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">
+                                                        No se encontraron productos para esta venta.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                ventaItems.map((item) => (
+                                                    <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/20">
+                                                        <td className="px-6 py-4">
+                                                            <p className="text-sm font-black text-slate-900 dark:text-white uppercase leading-none">{item.productos?.nombre || 'Producto Desconocido'}</p>
+                                                            <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">COD: {item.productos?.codigo || 'N/A'}</p>
+                                                        </td>
+                                                        <td className="px-6 py-4 text-center font-black text-slate-600 dark:text-zinc-400">{item.cantidad}</td>
+                                                        <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">$ {Number(item.precio_unitario).toLocaleString()}</td>
+                                                        <td className="px-6 py-4 text-right font-black text-primary">$ {Number(item.subtotal).toLocaleString()}</td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-8 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex justify-between items-center">
+                            <button className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-100 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary hover:border-primary/20 transition-all active:scale-95">
+                                <span className="material-symbols-outlined text-lg">print</span>
+                                Imprimir Comprobante
                             </button>
+                            <div className="text-right">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total de la Orden</p>
+                                <p className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">$ {Number(selectedVenta.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </Layout>
     );
 };

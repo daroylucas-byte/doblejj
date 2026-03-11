@@ -61,16 +61,6 @@ const Sidebar: React.FC = () => {
                     <span>Productos</span>
                 </NavLink>
                 <NavLink
-                    to="/stock"
-                    className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'
-                        }`
-                    }
-                >
-                    <span className="material-symbols-outlined">warehouse</span>
-                    <span>Stock</span>
-                </NavLink>
-                <NavLink
                     to="/ventas"
                     className={({ isActive }) =>
                         `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'
@@ -89,16 +79,6 @@ const Sidebar: React.FC = () => {
                 >
                     <span className="material-symbols-outlined">account_balance_wallet</span>
                     <span>Caja</span>
-                </NavLink>
-                <NavLink
-                    to="/reportes"
-                    className={({ isActive }) =>
-                        `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'
-                        }`
-                    }
-                >
-                    <span className="material-symbols-outlined">bar_chart</span>
-                    <span>Reportes</span>
                 </NavLink>
                 <NavLink
                     to="/proveedores"
