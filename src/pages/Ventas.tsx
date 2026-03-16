@@ -4,6 +4,7 @@ import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { generateSaleTicket } from '../utils/pdfGenerator';
 
 interface Venta {
     id: string;
@@ -697,7 +698,10 @@ const Ventas: React.FC = () => {
                         {/* Modal Footer */}
                         <div className="p-8 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                                <button className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-100 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary hover:border-primary/20 transition-all active:scale-95">
+                                <button 
+                                    onClick={() => generateSaleTicket(selectedVenta, ventaItems)}
+                                    className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-100 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary hover:border-primary/20 transition-all active:scale-95"
+                                >
                                     <span className="material-symbols-outlined text-lg">print</span>
                                     Imprimir
                                 </button>

@@ -4,6 +4,7 @@ import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { generateSaleTicket } from '../utils/pdfGenerator';
 
 interface Cliente {
     id: string;
@@ -211,6 +212,32 @@ const NuevaVenta: React.FC = () => {
                 if (errorPago) {
                     console.warn("Could not insert payment into pagos:", errorPago);
                 }
+            }
+
+            // 4. Generate PDF Ticket
+            try {
+                const pdfItems = cart.map(item => ({
+                    id: '', // Not needed for PDF
+                    producto_id: item.id,
+                    cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario,
+                    subtotal: item.subtotal,
+                    productos: {
+                        id: item.id,
+                        nombre: item.nombre,
+                        codigo: item.codigo || undefined
+                    }
+                }));
+
+                const pdfVenta = {
+                    ...venta,
+                    clientes: selectedCliente,
+                    venta_items: pdfItems
+                };
+
+                generateSaleTicket(pdfVenta, pdfItems);
+            } catch (pdfErr) {
+                console.error("Error generating PDF:", pdfErr);
             }
 
             alert('Venta confirmada con éxito!');
