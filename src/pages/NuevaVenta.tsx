@@ -114,6 +114,36 @@ const NuevaVenta: React.FC = () => {
         }));
     };
 
+    const handleSetQuantity = (id: string, value: string) => {
+        // Allow empty string or just a minus sign temporarily for better typing experience
+        if (value === '') {
+            setCart(cart.map(item => item.id === id ? { ...item, cantidad: 0, subtotal: 0 } : item));
+            return;
+        }
+
+        const newQty = parseInt(value);
+        if (isNaN(newQty)) return;
+
+        setCart(cart.map(item => {
+            if (item.id === id) {
+                return { ...item, cantidad: newQty, subtotal: newQty * item.precio_unitario };
+            }
+            return item;
+        }));
+    };
+
+    const handleQuantityBlur = (id: string, currentQty: number) => {
+        if (currentQty < 1) {
+            setCart(cart.map(item => {
+                if (item.id === id) {
+                    const fallbackQty = 1;
+                    return { ...item, cantidad: fallbackQty, subtotal: fallbackQty * item.precio_unitario };
+                }
+                return item;
+            }));
+        }
+    };
+
     const removeFromCart = (id: string) => {
         setCart(cart.filter(item => item.id !== id));
     };
@@ -389,8 +419,9 @@ const NuevaVenta: React.FC = () => {
                                                     >-</button>
                                                     <input
                                                         className="w-10 text-center bg-transparent border-none p-0 text-sm font-black focus:ring-0"
-                                                        value={item.cantidad}
-                                                        readOnly
+                                                        value={item.cantidad === 0 ? '' : item.cantidad}
+                                                        onChange={(e) => handleSetQuantity(item.id, e.target.value)}
+                                                        onBlur={() => handleQuantityBlur(item.id, item.cantidad)}
                                                     />
                                                     <button
                                                         onClick={() => updateQuantity(item.id, 1)}
