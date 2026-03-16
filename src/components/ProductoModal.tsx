@@ -102,16 +102,19 @@ const ProductoModal: React.FC<ProductoModalProps> = ({ isOpen, onClose, onSucces
         setError(null);
 
         try {
+            // Clean up data to exclude relationship fields
+            const { categorias, ...cleanData } = formData as any;
+
             if (producto?.id) {
                 const { error: updateError } = await supabase
                     .from('productos')
-                    .update(formData)
+                    .update(cleanData)
                     .eq('id', producto.id);
                 if (updateError) throw updateError;
             } else {
                 const { error: insertError } = await supabase
                     .from('productos')
-                    .insert([formData]);
+                    .insert([cleanData]);
                 if (insertError) throw insertError;
             }
 
