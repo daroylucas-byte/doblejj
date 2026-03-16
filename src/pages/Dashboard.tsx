@@ -96,14 +96,14 @@ const Dashboard: React.FC = () => {
             // 1. Snapshot Metrics (Global/Static)
             const [resHoy, resClientes, resProductos] = await Promise.all([
                 supabase.from('ventas').select('total').gte('fecha', todayStart.toISOString()).in('estado', ['confirmada', 'entregada', 'preparando', 'lista']),
-                supabase.from('clientes').select('saldo_actual').lt('saldo_actual', 0),
+                supabase.from('clientes').select('saldo_actual').gt('saldo_actual', 0),
                 supabase.from('productos').select('id, nombre, stock_actual, stock_minimo')
             ]);
 
             if (resHoy.data) setVentasDelDia(resHoy.data.reduce((a, b) => a + Number(b.total), 0));
             if (resClientes.data) {
                 setClientesConSaldo(resClientes.data.length);
-                setCobrosPendientes(resClientes.data.reduce((a, b) => a + Math.abs(Number(b.saldo_actual)), 0));
+                setCobrosPendientes(resClientes.data.reduce((a, b) => a + Number(b.saldo_actual), 0));
             }
             if (resProductos.data) {
                 const lowStock = resProductos.data.filter(p => Number(p.stock_actual) <= Number(p.stock_minimo));
