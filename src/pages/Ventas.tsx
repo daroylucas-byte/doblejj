@@ -3,15 +3,20 @@ import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
+import { useAuthStore } from '../store/authStore';
 
 interface Venta {
     id: string;
     numero: string;
     fecha: string;
-    cliente: { razon_social: string; cuit: string };
-    vendedor: { nombre: string; apellido: string };
-    estado: 'presupuesto' | 'confirmada' | 'preparando' | 'lista' | 'entregada' | 'cancelada';
+    cliente_id: string;
+    vendedor_id: string;
+    cliente: { id: string; razon_social: string; cuit: string; saldo_actual: number };
+    vendedor: { id: string; nombre: string; apellido: string };
+    estado: 'presupuesto' | 'confirmada' | 'preparando' | 'lista' | 'en distribucion' | 'entregada' | 'cancelada';
     total: number;
+    total_pagado: number;
+    saldo_pendiente: number;
     tipo_comprobante: string;
 }
 
@@ -39,14 +44,21 @@ const Ventas: React.FC = () => {
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [vendedores, setVendedores] = useState<Vendedor[]>([]);
     const [loading, setLoading] = useState(true);
+    const { user } = useAuthStore();
 
     // Modal state
     const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null);
     const [ventaItems, setVentaItems] = useState<VentaItem[]>([]);
     const [itemsLoading, setItemsLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const [showDeliveryModal, setShowDeliveryModal] = useState(false);
 
-    // Filters
+    // Delivery state
+    const [deliveryItems, setDeliveryItems] = useState<any[]>([]);
+    const [deliveryStatus, setDeliveryStatus] = useState<Venta['estado']>('entregada');
+    const [paymentAmount, setPaymentAmount] = useState<number>(0);
+    const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
+    const [isProcessing, setIsProcessing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('Todos');
     const [clienteFilter, setClienteFilter] = useState('Todos');
@@ -65,9 +77,9 @@ const Ventas: React.FC = () => {
             let query = supabase
                 .from('ventas')
                 .select(`
-                    id, numero, fecha, estado, total, tipo_comprobante,
-                    cliente:cliente_id (razon_social, cuit),
-                    vendedor:vendedor_id (nombre, apellido)
+                    id, numero, fecha, estado, total, total_pagado, saldo_pendiente, tipo_comprobante, cliente_id, vendedor_id,
+                    cliente:cliente_id (id, razon_social, cuit, saldo_actual),
+                    vendedor:vendedor_id (id, nombre, apellido)
                 `)
                 .order('fecha', { ascending: false });
 
@@ -122,6 +134,161 @@ const Ventas: React.FC = () => {
         setVentaItems([]);
     };
 
+    const handleOpenDeliveryModal = async (venta: Venta) => {
+        setShowModal(false); // Close detail modal if open
+        setSelectedVenta(venta);
+        setShowDeliveryModal(true);
+        setItemsLoading(true);
+        setDeliveryStatus(venta.estado === 'confirmada' || venta.estado === 'lista' || venta.estado === 'en distribucion' ? 'entregada' : venta.estado);
+        setPaymentAmount(Number(venta.saldo_pendiente));
+
+        try {
+            const { data, error } = await supabase
+                .from('venta_items')
+                .select(`
+                    id, 
+                    producto_id,
+                    cantidad, 
+                    precio_unitario, 
+                    subtotal,
+                    productos:producto_id (nombre, codigo)
+                `)
+                .eq('venta_id', venta.id);
+
+            if (error) throw error;
+            setDeliveryItems(data?.map(item => ({ ...item, cantidad_original: item.cantidad })) || []);
+        } catch (err) {
+            console.error('Error fetching items for delivery:', err);
+        } finally {
+            setItemsLoading(false);
+        }
+    };
+
+    const handleCloseDeliveryModal = () => {
+        setShowDeliveryModal(false);
+        setSelectedVenta(null);
+        setDeliveryItems([]);
+        setPaymentAmount(0);
+    };
+
+    const handleProcessDelivery = async () => {
+        if (!selectedVenta) return;
+        setIsProcessing(true);
+
+        try {
+            const currentUserId = user?.id || (await supabase.auth.getUser()).data.user?.id;
+            const clientId = selectedVenta.cliente?.id || selectedVenta.cliente_id;
+
+            if (!clientId) throw new Error('No se pudo identificar al cliente');
+
+            // 1. Get latest client balance to calculate cumulative balance correctly
+            const { data: clientData, error: clientErr } = await supabase
+                .from('clientes')
+                .select('saldo_actual')
+                .eq('id', clientId)
+                .single();
+            
+            if (clientErr) throw clientErr;
+            let currentSaldo = Number(clientData.saldo_actual) || 0;
+
+            // 2. Update quantities if changed
+            for (const item of deliveryItems) {
+                if (Number(item.cantidad) !== Number(item.cantidad_original)) {
+                    const { error: itemErr } = await supabase
+                        .from('venta_items')
+                        .update({ 
+                            cantidad: item.cantidad,
+                            subtotal: Number(item.cantidad) * Number(item.precio_unitario)
+                        })
+                        .eq('id', item.id);
+                    if (itemErr) throw itemErr;
+                }
+            }
+
+            // 3. Totals and Balance Calculation
+            const previousTotal = Number(selectedVenta.total);
+            const newTotal = deliveryItems.reduce((sum, item) => sum + (Number(item.cantidad) * Number(item.precio_unitario)), 0);
+            const totalPagadoAnterior = Number(selectedVenta.total_pagado);
+            const newTotalPagado = totalPagadoAnterior + Number(paymentAmount);
+            const newSaldoPendiente = Math.max(0, newTotal - newTotalPagado);
+
+            // 4. Handle Total Adjustment in Client Balance
+            if (newTotal !== previousTotal) {
+                const adjustment = newTotal - previousTotal;
+                const { error: adjErr } = await supabase
+                    .from('cuenta_corriente')
+                    .insert([{
+                        cliente_id: clientId,
+                        fecha: new Date().toISOString().split('T')[0],
+                        tipo: adjustment > 0 ? 'cargo' : 'nota_credito',
+                        concepto: `Ajuste en Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
+                        monto: Math.abs(adjustment),
+                        saldo_acumulado: currentSaldo + adjustment,
+                        venta_id: selectedVenta.id,
+                        usuario_id: currentUserId
+                    }]);
+                
+                if (adjErr) throw adjErr;
+                currentSaldo += adjustment; 
+            }
+
+            // 5. Register Payment if any
+            if (paymentAmount > 0) {
+                const { error: paymentError } = await supabase
+                    .from('pagos')
+                    .insert([{
+                        venta_id: selectedVenta.id,
+                        cliente_id: clientId,
+                        monto: Number(paymentAmount),
+                        forma_pago: paymentMethod,
+                        fecha: new Date().toISOString(),
+                        estado: 'acreditado',
+                        usuario_id: currentUserId
+                    }]);
+                
+                if (paymentError) throw paymentError;
+
+                const { error: ccErr } = await supabase
+                    .from('cuenta_corriente')
+                    .insert([{
+                        cliente_id: clientId,
+                        fecha: new Date().toISOString().split('T')[0],
+                        tipo: 'pago',
+                        concepto: `Cobro Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
+                        monto: Number(paymentAmount),
+                        saldo_acumulado: currentSaldo - Number(paymentAmount),
+                        venta_id: selectedVenta.id,
+                        usuario_id: currentUserId
+                    }]);
+
+                if (ccErr) throw ccErr;
+            }
+
+            // 6. Update Sale Status and Balance
+            const { error: updateError } = await supabase
+                .from('ventas')
+                .update({
+                    total: newTotal,
+                    total_pagado: newTotalPagado,
+                    saldo_pendiente: newSaldoPendiente,
+                    estado: deliveryStatus
+                })
+                .eq('id', selectedVenta.id);
+
+            if (updateError) throw updateError;
+
+            await fetchData();
+            handleCloseDeliveryModal();
+            handleCloseModal(); 
+            alert('Entrega y pago registrados exitosamente');
+        } catch (err) {
+            console.error('Error processing delivery:', err);
+            alert('Error al procesar la entrega: ' + (err as any).message);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     useEffect(() => {
         fetchData();
     }, [fetchData]);
@@ -132,6 +299,7 @@ const Ventas: React.FC = () => {
             case 'confirmada': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
             case 'preparando': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
             case 'lista': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
+            case 'en distribucion': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400';
             case 'entregada': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
             case 'cancelada': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
             default: return 'bg-slate-100 text-slate-600';
@@ -189,6 +357,7 @@ const Ventas: React.FC = () => {
                             <option>Confirmada</option>
                             <option>Preparando</option>
                             <option>Lista</option>
+                            <option value="en distribucion">En Distribución</option>
                             <option>Entregada</option>
                             <option>Cancelada</option>
                         </select>
@@ -217,14 +386,16 @@ const Ventas: React.FC = () => {
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Cliente</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Vendedor</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Estado</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Total</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Total</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Saldo Pend.</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Saldo Cliente</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center">
+                                        <td colSpan={9} className="px-6 py-12 text-center">
                                             <div className="flex flex-col items-center gap-3">
                                                 <div className="size-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
                                                 <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sincronizando órdenes...</span>
@@ -233,7 +404,7 @@ const Ventas: React.FC = () => {
                                     </tr>
                                 ) : ventas.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                        <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
                                             <span className="material-symbols-outlined text-4xl mb-2 block opacity-20">receipt_long</span>
                                             <p className="font-bold text-sm">No se encontraron ventas con estos filtros</p>
                                         </td>
@@ -250,7 +421,20 @@ const Ventas: React.FC = () => {
                                                     {v.estado}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-sm font-black text-slate-900 dark:text-white">$ {Number(v.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                                            <td className="px-6 py-4 text-sm font-black text-slate-900 dark:text-white text-right">$ {Number(v.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                                            <td className="px-6 py-4 text-right">
+                                                <span className={`text-[11px] font-black ${Number(v.saldo_pendiente) > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                                    $ {Number(v.saldo_pendiente).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex flex-col items-end">
+                                                    <span className={`text-sm font-black ${Number(v.cliente?.saldo_actual) > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                        $ {Number(v.cliente?.saldo_actual || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Cuenta Corriente</span>
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 text-center">
                                                 <button 
                                                     onClick={() => handleOpenModal(v)}
@@ -267,6 +451,151 @@ const Ventas: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Delivery Update Modal */}
+            {showDeliveryModal && selectedVenta && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 w-full max-w-4xl max-h-[90vh] rounded-[40px] shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-start bg-slate-50/50 dark:bg-zinc-800/30">
+                            <div>
+                                <h2 className="text-3xl font-black uppercase tracking-tighter text-slate-900 dark:text-white">REGISTRAR ENTREGA</h2>
+                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">ORDEN #{selectedVenta.numero} - {selectedVenta.cliente?.razon_social}</p>
+                            </div>
+                            <button onClick={handleCloseDeliveryModal} className="size-12 rounded-2xl bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                            {/* Items Adjustment - Solo si no está entregada */}
+                            {selectedVenta.estado !== 'entregada' && (
+                                <div>
+                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 ml-1">Ajuste de Cantidades (Devoluciones)</h3>
+                                <div className="rounded-2xl border border-slate-100 dark:border-zinc-800 overflow-hidden">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50 dark:bg-zinc-800/80">
+                                            <tr>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Producto</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 text-center">Cant.</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 text-right">Subtotal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                                            {deliveryItems.map((item, idx) => (
+                                                <tr key={item.id}>
+                                                    <td className="px-6 py-4">
+                                                        <p className="text-sm font-black text-slate-900 dark:text-white uppercase">{item.productos?.nombre}</p>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center justify-center gap-3">
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const newItems = [...deliveryItems];
+                                                                    newItems[idx].cantidad = Math.max(0, newItems[idx].cantidad - 1);
+                                                                    setDeliveryItems(newItems);
+                                                                }}
+                                                                className="size-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center"
+                                                            >
+                                                                <span className="material-symbols-outlined text-sm">remove</span>
+                                                            </button>
+                                                            <span className="text-sm font-black w-8 text-center">{item.cantidad}</span>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const newItems = [...deliveryItems];
+                                                                    newItems[idx].cantidad++;
+                                                                    setDeliveryItems(newItems);
+                                                                }}
+                                                                className="size-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center"
+                                                            >
+                                                                <span className="material-symbols-outlined text-sm">add</span>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">
+                                                        $ {(item.cantidad * item.precio_unitario).toLocaleString()}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                </div>
+                            )}
+
+                            {/* Payment Section */}
+                            <div className="p-6 bg-slate-50 dark:bg-zinc-800/50 rounded-3xl border border-slate-100 dark:border-zinc-800 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Registrar Pago</label>
+                                    <div className="space-y-4">
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                            <input 
+                                                type="number"
+                                                className="w-full pl-8 pr-4 py-3 bg-white dark:bg-zinc-900 border-2 border-slate-100 dark:border-zinc-700 rounded-xl font-black text-xl focus:ring-2 focus:ring-primary/50 outline-none"
+                                                value={paymentAmount}
+                                                onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {['efectivo', 'transferencia', 'tarjeta'].map(method => (
+                                                <button
+                                                    key={method}
+                                                    onClick={() => setPaymentMethod(method as any)}
+                                                    className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === method ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-zinc-800 text-slate-400 border border-slate-100 dark:border-zinc-700'}`}
+                                                >
+                                                    {method}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Estado de la Venta</label>
+                                    <select 
+                                        className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border-2 border-slate-100 dark:border-zinc-700 rounded-xl font-black text-xs uppercase tracking-widest outline-none focus:ring-2 focus:ring-primary/50"
+                                        value={deliveryStatus}
+                                        onChange={(e) => setDeliveryStatus(e.target.value as any)}
+                                    >
+                                        <option value="entregada">ENTREGADA</option>
+                                        <option value="en distribucion">EN DISTRIBUCION</option>
+                                        <option value="cancelada">CANCELADA</option>
+                                    </select>
+                                    <div className="mt-4 space-y-2">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="font-bold text-slate-400">NUEVO TOTAL:</span>
+                                        <span className="font-black text-slate-900 dark:text-white">$ {deliveryItems.reduce((s, i) => s + (i.cantidad*i.precio_unitario), 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="font-bold text-slate-400">PAGOS ANTERIORES:</span>
+                                        <span className="font-black text-slate-900 dark:text-white">$ {selectedVenta.total_pagado.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm pt-2 border-t border-dashed border-slate-200">
+                                        <span className="font-bold text-primary">SALDO RESTANTE:</span>
+                                        <span className="font-black text-primary text-xl">
+                                            $ {Math.max(0, deliveryItems.reduce((s, i) => s + (i.cantidad*i.precio_unitario), 0) - (selectedVenta.total_pagado + paymentAmount)).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-8 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex justify-end gap-4">
+                            <button onClick={handleCloseDeliveryModal} className="px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 hover:bg-slate-100 transition-all">Cancelar</button>
+                            <button 
+                                onClick={handleProcessDelivery}
+                                disabled={isProcessing}
+                                className="px-8 py-3 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                            >
+                                {isProcessing ? 'Procesando...' : selectedVenta.estado === 'entregada' ? 'Confirmar Pago' : 'Confirmar Entrega y Pago'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Venta Detail Modal */}
             {showModal && selectedVenta && (
@@ -366,10 +695,21 @@ const Ventas: React.FC = () => {
 
                         {/* Modal Footer */}
                         <div className="p-8 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex justify-between items-center">
-                            <button className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-100 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary hover:border-primary/20 transition-all active:scale-95">
-                                <span className="material-symbols-outlined text-lg">print</span>
-                                Imprimir Comprobante
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-100 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary hover:border-primary/20 transition-all active:scale-95">
+                                    <span className="material-symbols-outlined text-lg">print</span>
+                                    Imprimir
+                                </button>
+                                {selectedVenta.estado !== 'cancelada' && (selectedVenta.estado !== 'entregada' || Number(selectedVenta.saldo_pendiente) > 0) && (
+                                    <button 
+                                        onClick={() => handleOpenDeliveryModal(selectedVenta)}
+                                        className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-105 transition-all active:scale-95"
+                                    >
+                                        <span className="material-symbols-outlined text-lg">{selectedVenta.estado === 'entregada' ? 'payments' : 'local_shipping'}</span>
+                                        {selectedVenta.estado === 'entregada' ? 'Registrar Pago' : 'Registrar Entrega / Pago'}
+                                    </button>
+                                )}
+                            </div>
                             <div className="text-right">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total de la Orden</p>
                                 <p className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">$ {Number(selectedVenta.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>

@@ -16,10 +16,10 @@ interface Proveedor {
 
 interface Producto {
     id: string;
+    codigo: string | null;
     nombre: string;
     stock_actual: number;
     precio_costo: number;
-    sku: string;
 }
 
 interface CartItemCompra extends Producto {
@@ -211,7 +211,7 @@ const NuevaCompra: React.FC = () => {
         if (searchProduct.length > 1) {
             const filtered = productos.filter(p =>
                 p.nombre.toLowerCase().includes(searchProduct.toLowerCase()) ||
-                p.sku?.toLowerCase().includes(searchProduct.toLowerCase())
+                p.codigo?.toLowerCase().includes(searchProduct.toLowerCase())
             );
             setFilteredProducts(filtered);
             setProductDropdown(true);
@@ -310,7 +310,7 @@ const NuevaCompra: React.FC = () => {
                             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                             <input
                                 className="w-full bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl pl-12 pr-4 py-4 text-sm font-bold focus:ring-2 focus:ring-primary/50"
-                                placeholder="Nombre del producto o SKU..."
+                                placeholder="Nombre del producto o Código..."
                                 value={searchProduct}
                                 onChange={(e) => setSearchProduct(e.target.value)}
                                 onFocus={() => searchProduct.length > 1 && setProductDropdown(true)}
@@ -401,7 +401,7 @@ const NuevaCompra: React.FC = () => {
                                         <div className="flex justify-between items-start mb-4">
                                             <div className="flex-1">
                                                 <h4 className="font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none mb-1">{item.nombre}</h4>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">SKU: {item.sku || 'N/A'}</p>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Código: {item.codigo || 'N/A'}</p>
                                             </div>
                                             <button
                                                 onClick={() => removeFromCart(item.id)}

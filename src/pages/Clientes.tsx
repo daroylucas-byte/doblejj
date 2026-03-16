@@ -188,9 +188,10 @@ const Clientes: React.FC = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className={`px-6 py-4 text-right font-black ${cliente.saldo_actual < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                            <td className={`px-6 py-4 text-right font-black ${cliente.saldo_actual > 0 ? 'text-rose-600' : cliente.saldo_actual < 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                                                 $ {Math.abs(cliente.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                                {cliente.saldo_actual < 0 && ' (Deudor)'}
+                                                {cliente.saldo_actual > 0 && <span className="block text-[10px] font-bold uppercase tracking-widest opacity-70">Deuda</span>}
+                                                {cliente.saldo_actual < 0 && <span className="block text-[10px] font-bold uppercase tracking-widest opacity-70">A Favor</span>}
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <div className="flex items-center justify-center gap-1">

@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore';
 interface Cliente {
     id: string;
     razon_social: string;
+    nombre_fantasia: string | null;
     cuit: string;
     dni: string;
     tipo: 'minorista' | 'mayorista' | 'revendedor';
@@ -17,13 +18,13 @@ interface Cliente {
 
 interface Producto {
     id: string;
+    codigo: string | null;
     nombre: string;
     stock_actual: number;
     precio_costo: number;
     precio_minorista: number;
     precio_mayorista: number;
     precio_revendedor: number;
-    sku: string;
 }
 
 interface CartItem extends Producto {
@@ -44,13 +45,18 @@ const NuevaVenta: React.FC = () => {
     // Form State
     const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
-    const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta' | 'transferencia' | 'credito'>('efectivo');
+    const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta' | 'transferencia' | 'credito'>('credito');
     const [montoRecibido, setMontoRecibido] = useState<number>(0);
     const [searchProduct, setSearchProduct] = useState('');
     const [filteredProducts, setFilteredProducts] = useState<Producto[]>([]);
     const [productDropdown, setProductDropdown] = useState(false);
 
+    const [searchCliente, setSearchCliente] = useState('');
+    const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
+    const [clienteDropdown, setClienteDropdown] = useState(false);
+
     const productSearchRef = useRef<HTMLDivElement>(null);
+    const clienteSearchRef = useRef<HTMLDivElement>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -139,8 +145,8 @@ const NuevaVenta: React.FC = () => {
                     cliente_id: selectedCliente.id,
                     vendedor_id: user?.id,
                     total: total,
-                    saldo_pendiente: isCredit ? total : 0,
-                    estado: 'entregada', // Setting directly to entregada to fire both Stock and Account triggers
+                    saldo_pendiente: total,
+                    estado: 'en distribucion', // Nueva venta por defecto en distribucion
                     tipo_comprobante: 'ticket',
                     fecha: new Date().toISOString()
                 }])
@@ -161,15 +167,15 @@ const NuevaVenta: React.FC = () => {
             const { error: itemsErr } = await supabase.from('venta_items').insert(itemsToInsert);
             if (itemsErr) throw itemsErr;
 
-            // 3. Client Balance & Account
+            // 3. Client Balance & Account (Now handled by DB Trigger)
             if (!isCredit) {
                 // If paid immediately, record it in the 'pagos' table
                 const { error: errorPago } = await supabase.from('pagos').insert({
                     cliente_id: selectedCliente.id,
                     venta_id: venta.id,
                     monto: total,
-                    metodo_pago: metodoPago,
-                    notas: `Pago directo en caja - Venta #${venta.id.slice(0, 6)}`
+                    forma_pago: metodoPago,
+                    fecha: new Date().toISOString()
                 });
 
                 if (errorPago) {
@@ -193,7 +199,7 @@ const NuevaVenta: React.FC = () => {
         if (searchProduct.length > 1) {
             const filtered = productos.filter(p =>
                 p.nombre.toLowerCase().includes(searchProduct.toLowerCase()) ||
-                p.sku?.toLowerCase().includes(searchProduct.toLowerCase())
+                p.codigo?.toLowerCase().includes(searchProduct.toLowerCase())
             );
             setFilteredProducts(filtered);
             setProductDropdown(true);
@@ -203,11 +209,30 @@ const NuevaVenta: React.FC = () => {
         }
     }, [searchProduct, productos]);
 
-    // Handle Click Outside for product search
+    // Cliente Search Filter
+    useEffect(() => {
+        if (searchCliente.length > 1) {
+            const filtered = clientes.filter(c =>
+                c.razon_social.toLowerCase().includes(searchCliente.toLowerCase()) ||
+                c.nombre_fantasia?.toLowerCase().includes(searchCliente.toLowerCase()) ||
+                c.cuit?.toLowerCase().includes(searchCliente.toLowerCase())
+            );
+            setFilteredClientes(filtered);
+            setClienteDropdown(true);
+        } else {
+            setFilteredClientes([]);
+            setClienteDropdown(false);
+        }
+    }, [searchCliente, clientes]);
+
+    // Handle Click Outside for product and cliente search
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (productSearchRef.current && !productSearchRef.current.contains(event.target as Node)) {
                 setProductDropdown(false);
+            }
+            if (clienteSearchRef.current && !clienteSearchRef.current.contains(event.target as Node)) {
+                setClienteDropdown(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -239,25 +264,54 @@ const NuevaVenta: React.FC = () => {
 
                     {/* Selector Section */}
                     <div className="grid grid-cols-2 gap-4 shrink-0">
-                        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl shadow-sm transition-all hover:shadow-md">
+                        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl shadow-sm transition-all hover:shadow-md relative" ref={clienteSearchRef}>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">1. Seleccionar Cliente</label>
                             <div className="relative group">
                                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors">person_search</span>
-                                <select
-                                    className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-primary/50 transition-all appearance-none"
-                                    value={selectedCliente?.id || ''}
-                                    onChange={(e) => {
-                                        const c = clientes.find(cli => cli.id === e.target.value);
-                                        setSelectedCliente(c || null);
-                                    }}
-                                >
-                                    <option value="">-- Seleccionar un cliente --</option>
-                                    {clientes.map(c => (
-                                        <option key={c.id} value={c.id}>{c.razon_social} ({c.tipo.toUpperCase()})</option>
-                                    ))}
-                                </select>
-                                <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">expand_more</span>
+                                <input
+                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-primary/50 transition-all"
+                                    placeholder={selectedCliente ? selectedCliente.razon_social : "Buscar cliente..."}
+                                    value={searchCliente}
+                                    onChange={(e) => setSearchCliente(e.target.value)}
+                                    onFocus={() => searchCliente.length > 1 && setClienteDropdown(true)}
+                                />
+                                {selectedCliente && !searchCliente && (
+                                    <button 
+                                        onClick={() => {
+                                            setSelectedCliente(null);
+                                            setSearchCliente('');
+                                        }}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">close</span>
+                                    </button>
+                                )}
                             </div>
+
+                            {/* Cliente Search Dropdown */}
+                            {clienteDropdown && filteredClientes.length > 0 && (
+                                <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 max-h-[300px] overflow-y-auto p-2">
+                                    {filteredClientes.map(c => (
+                                        <button
+                                            key={c.id}
+                                            onClick={() => {
+                                                setSelectedCliente(c);
+                                                setSearchCliente('');
+                                                setClienteDropdown(false);
+                                            }}
+                                            className="w-full flex flex-col p-3 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-xl transition-colors text-left"
+                                        >
+                                            <span className="text-sm font-black">{c.razon_social}</span>
+                                            <div className="flex justify-between items-center mt-1">
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase">{c.nombre_fantasia || 'S/N'} • {c.cuit?.length === 11 ? `CUIT ${c.cuit}` : c.cuit || 'Sin CUIT'}</span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${c.tipo === 'mayorista' ? 'bg-amber-100 text-amber-700' : c.tipo === 'revendedor' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {c.tipo}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl shadow-sm transition-all hover:shadow-md relative" ref={productSearchRef}>
@@ -324,7 +378,7 @@ const NuevaVenta: React.FC = () => {
                                             <td className="px-4 py-4">
                                                 <div className="flex flex-col">
                                                     <span className="font-black text-sm text-slate-900 dark:text-white">{item.nombre}</span>
-                                                    <span className="text-[10px] font-bold text-slate-400">{item.sku || 'S/N'}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400">{item.codigo || 'S/N'}</span>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">
