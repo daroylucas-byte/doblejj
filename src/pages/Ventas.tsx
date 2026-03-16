@@ -194,6 +194,7 @@ const Ventas: React.FC = () => {
             // 2. Update quantities if changed
             for (const item of deliveryItems) {
                 if (Number(item.cantidad) !== Number(item.cantidad_original)) {
+                    // 1. Update Venta Item
                     const { error: itemErr } = await supabase
                         .from('venta_items')
                         .update({ 
