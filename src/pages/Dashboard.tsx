@@ -10,8 +10,7 @@ import {
     format, 
     isSameDay, 
     parseISO, 
-    startOfMonth, 
-    endOfDay
+    startOfMonth
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 
