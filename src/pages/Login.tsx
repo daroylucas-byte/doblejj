@@ -39,21 +39,21 @@ const Login: React.FC = () => {
                 {/* Header/TopNavBar */}
                 <header className="flex items-center justify-between border-b border-slate-200 dark:border-primary/20 px-6 lg:px-40 py-4 bg-white dark:bg-background-dark/50 backdrop-blur-md">
                     <div className="flex items-center gap-3">
-                        <div className="size-10 flex items-center justify-center rounded-lg bg-primary text-secondary">
-                            <span className="material-symbols-outlined text-3xl">hub</span>
+                        <div className="size-10 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-800 p-1 shadow-sm border border-slate-100 dark:border-zinc-700">
+                            <img src="/logo_ticket.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
-                        <h2 className="text-xl font-bold leading-tight tracking-tight">DistribuApp</h2>
+                        <h2 className="text-xl font-bold leading-tight tracking-tight">Doble JJ</h2>
                     </div>
                 </header>
 
                 <main className="flex-1 flex items-center justify-center px-4 py-12">
                     <div className="layout-content-container flex flex-col w-full max-w-[480px] bg-white dark:bg-black/20 p-8 rounded-xl shadow-xl border border-slate-200 dark:border-primary/10">
                         <div className="flex flex-col items-center mb-8">
-                            <div className="size-16 bg-primary rounded-full flex items-center justify-center mb-4 shadow-lg shadow-primary/20">
-                                <span className="material-symbols-outlined text-white text-4xl">lock_open</span>
+                            <div className="size-20 bg-white dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4 shadow-lg border-2 border-primary/10 p-2">
+                                <img src="/logo_ticket.png" alt="Doble JJ Logo" className="w-full h-full object-contain" />
                             </div>
                             <h1 className="tracking-tight text-3xl font-bold leading-tight text-center">Iniciar Sesión</h1>
-                            <p className="text-slate-600 dark:text-slate-400 text-base font-normal mt-2 text-center">Gestiona tu red de distribución</p>
+                            <p className="text-slate-600 dark:text-slate-400 text-sm font-medium mt-2 text-center uppercase tracking-widest px-4 py-1 bg-primary/5 rounded-full border border-primary/10">Abastecimiento Mayorista</p>
                         </div>
 
                         {error && (
@@ -149,7 +149,7 @@ const Login: React.FC = () => {
 
                 {/* Footer */}
                 <footer className="py-6 px-10 text-center">
-                    <p className="text-slate-500 dark:text-slate-500 text-xs">© 2024 DistribuApp. Todos los derechos reservados.</p>
+                    <p className="text-slate-500 dark:text-slate-500 text-xs">© 2024 Doble JJ Abastecimientos. Todos los derechos reservados.</p>
                 </footer>
             </div>
         </div>

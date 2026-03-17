@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import ClienteModal from '../components/ClienteModal';
+import CobroModal from '../components/CobroModal';
 import { supabase } from '../lib/supabase';
 
 interface Cliente {
@@ -27,6 +28,7 @@ const Clientes: React.FC = () => {
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isCobroModalOpen, setIsCobroModalOpen] = useState(false);
     const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterTipo, setFilterTipo] = useState('Todos');
@@ -66,6 +68,11 @@ const Clientes: React.FC = () => {
     const handleNew = () => {
         setSelectedCliente(null);
         setIsModalOpen(true);
+    };
+
+    const handleCobro = (cliente: Cliente) => {
+        setSelectedCliente(cliente);
+        setIsCobroModalOpen(true);
     };
 
     return (
@@ -209,6 +216,13 @@ const Clientes: React.FC = () => {
                                                     >
                                                         <span className="material-symbols-outlined group-hover:scale-110 transition-transform">edit_square</span>
                                                     </button>
+                                                    <button
+                                                        onClick={(e) => { e.preventDefault(); handleCobro(cliente); }}
+                                                        className="p-2 text-emerald-500 hover:text-emerald-600 transition-all hover:bg-emerald-500/10 rounded-lg group"
+                                                        title="Registrar Cobro"
+                                                    >
+                                                        <span className="material-symbols-outlined group-hover:scale-125 transition-transform font-bold">payments</span>
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -223,6 +237,13 @@ const Clientes: React.FC = () => {
             <ClienteModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
+                onSuccess={fetchClientes}
+                cliente={selectedCliente}
+            />
+
+            <CobroModal
+                isOpen={isCobroModalOpen}
+                onClose={() => setIsCobroModalOpen(false)}
                 onSuccess={fetchClientes}
                 cliente={selectedCliente}
             />

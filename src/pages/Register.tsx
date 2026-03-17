@@ -76,10 +76,10 @@ const Register: React.FC = () => {
                 {/* Navigation Header */}
                 <header className="flex items-center justify-between border-b border-stone-200 dark:border-stone-800 px-6 py-4 lg:px-20 bg-white dark:bg-background-dark/50 backdrop-blur-md sticky top-0 z-50">
                     <div className="flex items-center gap-3">
-                        <div className="size-8 flex items-center justify-center bg-primary rounded-lg text-white">
-                            <span className="material-symbols-outlined">inventory_2</span>
+                        <div className="size-10 flex items-center justify-center bg-white dark:bg-zinc-800 rounded-lg p-1 border border-stone-200 dark:border-stone-700">
+                            <img src="/logo_ticket.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
-                        <h2 className="text-xl font-bold leading-tight tracking-tight">DistribuApp</h2>
+                        <h2 className="text-xl font-bold leading-tight tracking-tight text-stone-900 dark:text-white">Doble JJ</h2>
                     </div>
                 </header>
 
@@ -96,8 +96,8 @@ const Register: React.FC = () => {
                                 }}
                             />
                             <div className="relative z-10">
-                                <h1 className="text-4xl font-black text-white leading-tight mb-6">Optimiza tu distribución con <span className="text-primary">DistribuApp</span></h1>
-                                <p className="text-stone-300 text-lg max-w-md">La plataforma integral para la gestión de ventas, depósitos y cajas diseñada para el crecimiento de tu negocio.</p>
+                                <h1 className="text-4xl font-black text-white leading-tight mb-6">Optimiza tu gestión con <span className="text-primary italic">Doble JJ</span></h1>
+                                <p className="text-stone-300 text-lg max-w-md">Soluciones logísticas y de abastecimiento mayorista diseñadas para potenciar tu negocio.</p>
                             </div>
                             <div className="relative z-10 space-y-6 text-white font-medium">
                                 <div className="flex items-center gap-4">
@@ -272,7 +272,7 @@ const Register: React.FC = () => {
                                         required
                                     />
                                     <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
-                                        Acepto los <a className="text-primary hover:underline" href="#">términos de servicio</a> y la <a className="text-primary hover:underline" href="#">política de privacidad</a> de DistribuApp.
+                                        Acepto los <a className="text-primary hover:underline" href="#">términos de servicio</a> y la <a className="text-primary hover:underline" href="#">política de privacidad</a> de Doble JJ.
                                     </p>
                                 </div>
 
@@ -309,7 +309,7 @@ const Register: React.FC = () => {
 
                 {/* Footer */}
                 <footer className="px-6 py-8 text-center text-stone-400 dark:text-stone-600 text-sm">
-                    <p>© 2024 DistribuApp Logistics Systems. Todos los derechos reservados.</p>
+                    <p>© 2024 Doble JJ Abastecimientos. Todos los derechos reservados.</p>
                 </footer>
             </div>
         </div>

@@ -21,12 +21,12 @@ const Sidebar: React.FC = () => {
     return (
         <aside className="w-64 flex-shrink-0 bg-white dark:bg-zinc-900 border-r border-slate-200 dark:border-zinc-800 flex flex-col hidden lg:flex h-screen sticky top-0">
             <div className="p-6 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">
-                    <span className="material-symbols-outlined">local_shipping</span>
+                <div className="w-12 h-12 rounded-xl bg-white dark:bg-zinc-800 flex items-center justify-center p-1 shadow-md">
+                    <img src="/logo_ticket.png" alt="Doble JJ Logo" className="w-full h-full object-contain" />
                 </div>
                 <div>
-                    <h1 className="font-bold text-lg leading-none">DistribuApp</h1>
-                    <p className="text-xs text-slate-500 dark:text-zinc-500 font-medium">Panel Administrativo</p>
+                    <h1 className="font-bold text-lg leading-none">Doble JJ</h1>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-500 font-medium uppercase tracking-tighter">Abastecimiento Mayorista</p>
                 </div>
             </div>
             <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-zinc-800">

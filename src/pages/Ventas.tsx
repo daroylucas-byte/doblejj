@@ -59,6 +59,7 @@ const Ventas: React.FC = () => {
     const [deliveryStatus, setDeliveryStatus] = useState<Venta['estado']>('entregada');
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
     const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
+    const [aclaracion, setAclaracion] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('Todos');
@@ -142,6 +143,7 @@ const Ventas: React.FC = () => {
         setItemsLoading(true);
         setDeliveryStatus(venta.estado === 'confirmada' || venta.estado === 'lista' || venta.estado === 'en distribucion' ? 'entregada' : venta.estado);
         setPaymentAmount(Number(venta.saldo_pendiente));
+        setAclaracion(venta.cliente?.razon_social || '');
 
         try {
             const { data, error } = await supabase
@@ -170,6 +172,65 @@ const Ventas: React.FC = () => {
         setSelectedVenta(null);
         setDeliveryItems([]);
         setPaymentAmount(0);
+        setAclaracion('');
+    };
+
+    const handleAnularVenta = async (venta: Venta) => {
+        if (!window.confirm(`¿Está seguro que desea ANULAR la Venta #${venta.numero || venta.id.slice(0, 6)}? Esta acción devolverá el stock y ajustará la cuenta corriente.`)) {
+            return;
+        }
+
+        setIsProcessing(true);
+        try {
+            const currentUserId = user?.id || (await supabase.auth.getUser()).data.user?.id;
+            const clientId = venta.cliente?.id || venta.cliente_id;
+
+            // 1. Update Sale Status to 'cancelada'
+            // This triggers handle_stock_on_venta_status_change in DB (Restores Stock)
+            const { error: updateError } = await supabase
+                .from('ventas')
+                .update({ estado: 'cancelada' })
+                .eq('id', venta.id);
+
+            if (updateError) throw updateError;
+
+            // 2. Adjust Cuenta Corriente if it was confirmed (meaning it had a 'cargo')
+            if (venta.estado !== 'presupuesto') {
+                // Get current balance
+                const { data: clientData, error: clientErr } = await supabase
+                    .from('clientes')
+                    .select('saldo_actual')
+                    .eq('id', clientId)
+                    .single();
+                
+                if (clientErr) throw clientErr;
+                const currentSaldo = Number(clientData.saldo_actual) || 0;
+
+                // Insert Nota de Crédito to reverse the original 'cargo'
+                const { error: ccErr } = await supabase
+                    .from('cuenta_corriente')
+                    .insert([{
+                        cliente_id: clientId,
+                        fecha: new Date().toISOString().split('T')[0],
+                        tipo: 'nota_credito',
+                        concepto: `Anulación Venta #${venta.numero || venta.id.slice(0, 6)}`,
+                        monto: Number(venta.total),
+                        saldo_acumulado: currentSaldo - Number(venta.total),
+                        venta_id: venta.id,
+                        usuario_id: currentUserId
+                    }]);
+
+                if (ccErr) throw ccErr;
+            }
+
+            alert('Venta anulada con éxito. El stock ha sido devuelto.');
+            await fetchData();
+        } catch (err: any) {
+            console.error('Error annulling sale:', err);
+            alert('Error al anular la venta: ' + err.message);
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const handleProcessDelivery = async () => {
@@ -438,12 +499,31 @@ const Ventas: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-center">
-                                                <button 
-                                                    onClick={() => handleOpenModal(v)}
-                                                    className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-all active:scale-90 group/btn"
-                                                >
-                                                    <span className="material-symbols-outlined group-hover/btn:scale-110 transition-transform">visibility</span>
-                                                </button>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button 
+                                                        onClick={() => handleOpenModal(v)}
+                                                        className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-all active:scale-90 group/btn"
+                                                        title="Ver Detalle"
+                                                    >
+                                                        <span className="material-symbols-outlined group-hover/btn:scale-110 transition-transform">visibility</span>
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleOpenDeliveryModal(v)}
+                                                        className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-all active:scale-90 group/btn"
+                                                        title="Registrar Entrega / Pago"
+                                                    >
+                                                        <span className="material-symbols-outlined group-hover/btn:scale-110 transition-transform">local_shipping</span>
+                                                    </button>
+                                                    {v.estado === 'en distribucion' && (
+                                                        <button 
+                                                            onClick={() => handleAnularVenta(v)}
+                                                            className="text-rose-500 hover:bg-rose-500/10 p-2 rounded-lg transition-all active:scale-90 group/btn"
+                                                            title="Anular Venta"
+                                                        >
+                                                            <span className="material-symbols-outlined group-hover/btn:scale-110 transition-transform">cancel</span>
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -581,6 +661,31 @@ const Ventas: React.FC = () => {
                                     </div>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Aclaración y Firma */}
+                            <div className="p-6 bg-primary/5 rounded-3xl border border-primary/10">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-primary block mb-3">Confirmación de Recepción (Firma y Aclaración)</label>
+                                <div className="flex flex-col md:flex-row gap-6 items-end">
+                                    <div className="flex-1 w-full">
+                                        <label className="text-[9px] font-bold text-slate-400 uppercase mb-1 block">Nombre de quien recibe (Aclaración)</label>
+                                        <input 
+                                            type="text"
+                                            className="w-full px-4 py-3 bg-white dark:bg-zinc-900 border-2 border-slate-100 dark:border-zinc-700 rounded-xl font-bold text-sm focus:ring-2 focus:ring-primary/50 outline-none uppercase"
+                                            value={aclaracion}
+                                            onChange={(e) => setAclaracion(e.target.value)}
+                                            placeholder="Nombre completo..."
+                                        />
+                                    </div>
+                                    <button 
+                                        onClick={() => generateSaleTicket(selectedVenta, deliveryItems, aclaracion)}
+                                        className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-primary text-primary rounded-xl text-xs font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all active:scale-95 shadow-sm"
+                                    >
+                                        <span className="material-symbols-outlined text-lg">print</span>
+                                        Imprimir Comprobante de Entrega
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-3 italic">* Al imprimir el comprobante se incluirán los espacios para Firma y Aclaración física.</p>
                             </div>
                         </div>
 
