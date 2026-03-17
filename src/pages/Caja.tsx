@@ -22,6 +22,8 @@ export default function Caja() {
     const [saldoReal, setSaldoReal] = useState<number>(0);
     const [notasCierre, setNotasCierre] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [selectedCierre, setSelectedCierre] = useState<any>(null);
+    const [detalleCierreOpen, setDetalleCierreOpen] = useState(false);
 
     // Manual Expense State
     const [egresoForm, setEgresoForm] = useState({ monto: '', concepto: '', categoria_gasto_id: '' });
@@ -244,6 +246,9 @@ export default function Caja() {
                 saldo_inicial: saldoInicial,
                 total_ingresos: ingresos,
                 total_egresos: egresos,
+                total_efectivo: ingresosEfvo,
+                total_transferencia: ingresosTransf,
+                total_tarjeta: ingresosTarjeta,
                 saldo_teorico: saldoTeorico,
                 saldo_real: saldoReal,
                 diferencia: diferencia,
@@ -522,10 +527,11 @@ export default function Caja() {
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
                                     <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha Cierre</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Saldo Inicial</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Efectivo S/ Sistema</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Efectivo Real</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Diferencia</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Efectivo (Arqueo)</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Transferencia</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Tarjeta</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Total General</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -541,17 +547,26 @@ export default function Caja() {
                                             <td className="px-6 py-4 text-xs font-bold text-slate-500">
                                                 {new Date(c.fecha_cierre).toLocaleString()}
                                             </td>
-                                            <td className="px-6 py-4 text-xs font-bold text-slate-600 dark:text-slate-400">
-                                                $ {c.saldo_inicial?.toLocaleString('es-AR')}
+                                            <td className="px-6 py-4 text-center">
+                                                <div className="text-xs font-black text-slate-900 dark:text-white">$ {c.saldo_real?.toLocaleString('es-AR')}</div>
+                                                <div className="text-[9px] text-slate-400 font-bold uppercase">Sist: ${c.saldo_teorico?.toLocaleString('es-AR')}</div>
                                             </td>
-                                            <td className="px-6 py-4 text-xs font-black text-slate-900 dark:text-white">
-                                                $ {c.saldo_teorico?.toLocaleString('es-AR')}
+                                            <td className="px-6 py-4 text-center text-xs font-black text-blue-500">
+                                                $ {(c.total_transferencia || 0).toLocaleString('es-AR')}
                                             </td>
-                                            <td className="px-6 py-4 text-xs font-black text-primary">
-                                                $ {c.saldo_real?.toLocaleString('es-AR')}
+                                            <td className="px-6 py-4 text-center text-xs font-black text-purple-500">
+                                                $ {(c.total_tarjeta || 0).toLocaleString('es-AR')}
                                             </td>
-                                            <td className={`px-6 py-4 text-right text-xs font-black ${c.diferencia === 0 ? 'text-emerald-500' : c.diferencia > 0 ? 'text-blue-500' : 'text-rose-500'}`}>
-                                                {c.diferencia === 0 ? 'OK' : `$ ${c.diferencia.toLocaleString('es-AR')}`}
+                                            <td className="px-6 py-4 text-center text-xs font-black text-slate-700 dark:text-slate-200">
+                                                $ {c.total_ingresos?.toLocaleString('es-AR')}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button 
+                                                    onClick={() => { setSelectedCierre(c); setDetalleCierreOpen(true); }}
+                                                    className="p-2 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-lg text-slate-600 dark:text-slate-400 transition-all"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">visibility</span>
+                                                </button>
                                             </td>
                                         </tr>
                                     ))
@@ -583,14 +598,26 @@ export default function Caja() {
                                     </p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                     <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Efectivo Inicial</p>
                                         <p className="font-bold">$ {saldoInicial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
                                     </div>
                                     <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-primary/20">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Efectivo Teórico Final</p>
-                                        <p className="font-black text-2xl text-primary">$ {saldoTeorico.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Efvo. Teórico</p>
+                                        <p className="font-black text-lg text-primary">$ {saldoTeorico.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Transferencias</p>
+                                        <p className="font-black text-lg text-blue-500">$ {ingresosTransf.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-1">Tarjetas</p>
+                                        <p className="font-black text-lg text-purple-500">$ {ingresosTarjeta.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <div className="bg-slate-900 dark:bg-zinc-100 p-4 rounded-2xl">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Total Cobrado (Turno)</p>
+                                        <p className="font-black text-lg text-white dark:text-zinc-900">$ {ingresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
                                     </div>
                                 </div>
 
@@ -730,6 +757,84 @@ export default function Caja() {
                                             GUARDAR EGRESO
                                         </>
                                     )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Detalle Cierre Modal */}
+                {detalleCierreOpen && selectedCierre && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                        <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800">
+                            <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary">visibility</span>
+                                        Detalle de Cierre
+                                    </h2>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                        {new Date(selectedCierre.fecha_cierre).toLocaleString()}
+                                    </p>
+                                </div>
+                                <button onClick={() => setDetalleCierreOpen(false)} className="size-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 transition-colors">
+                                    <span className="material-symbols-outlined">close</span>
+                                </button>
+                            </div>
+
+                            <div className="p-8 space-y-8">
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saldo Inicial</p>
+                                        <p className="text-lg font-bold text-slate-700 dark:text-slate-300">$ {(selectedCierre.saldo_inicial || 0).toLocaleString('es-AR')}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cajero / Usuario</p>
+                                        <p className="text-lg font-bold text-slate-700 dark:text-slate-300">ADMIN</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-50 dark:bg-zinc-800/30 rounded-[2rem] p-6 space-y-4 border border-slate-100 dark:border-zinc-800">
+                                    <div className="flex justify-between items-center border-b border-slate-200 dark:border-zinc-700 pb-2">
+                                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">Efectivo Real (Arqueo)</span>
+                                        <span className="text-lg font-black text-slate-900 dark:text-white">$ {(selectedCierre.saldo_real || 0).toLocaleString('es-AR')}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs font-bold">
+                                        <span className="text-slate-400 underline decoration-primary/30 decoration-2">Efectivo s/ Sistema:</span>
+                                        <span className="text-slate-600 dark:text-slate-400">$ {(selectedCierre.saldo_teorico || 0).toLocaleString('es-AR')}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs font-bold">
+                                        <span className="text-slate-400 underline decoration-blue-500/30 decoration-2">Transferencias:</span>
+                                        <span className="text-blue-500">$ {(selectedCierre.total_transferencia || 0).toLocaleString('es-AR')}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs font-bold">
+                                        <span className="text-slate-400 underline decoration-purple-500/30 decoration-2">Tarjetas:</span>
+                                        <span className="text-purple-500">$ {(selectedCierre.total_tarjeta || 0).toLocaleString('es-AR')}</span>
+                                    </div>
+                                    <div className="pt-2 flex justify-between items-center border-t border-slate-200 dark:border-zinc-700">
+                                        <span className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white text-primary">TOTAL RECAUDADO</span>
+                                        <span className="text-xl font-black text-primary">
+                                            $ {(selectedCierre.saldo_real + (selectedCierre.total_transferencia || 0) + (selectedCierre.total_tarjeta || 0)).toLocaleString('es-AR')}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {selectedCierre.notas && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block ml-1">Notas del Cierre</label>
+                                        <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-2xl text-xs font-bold text-amber-900 dark:text-amber-200 leading-relaxed">
+                                            {selectedCierre.notas}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-8 bg-slate-50 dark:bg-zinc-800/30 flex justify-end">
+                                <button
+                                    onClick={() => setDetalleCierreOpen(false)}
+                                    className="px-8 py-3 bg-slate-900 dark:bg-white text-white dark:text-zinc-900 rounded-xl font-black uppercase tracking-widest text-[10px] hover:scale-105 transition-all"
+                                >
+                                    Cerrar Ventana
                                 </button>
                             </div>
                         </div>

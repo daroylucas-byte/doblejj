@@ -81,10 +81,6 @@ const Dashboard: React.FC = () => {
         try {
             setLoading(true);
 
-            const filterStart = parseISO(startDate);
-            const filterEnd = endOfDay(parseISO(endDate));
-
-            // Snapshots (Today)
             const todayStart = new Date();
             todayStart.setHours(0, 0, 0, 0);
             
@@ -94,8 +90,9 @@ const Dashboard: React.FC = () => {
             const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
             // 1. Snapshot Metrics (Global/Static)
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
             const [resHoy, resClientes, resProductos] = await Promise.all([
-                supabase.from('ventas').select('total').gte('fecha', todayStart.toISOString()).in('estado', ['confirmada', 'entregada', 'preparando', 'lista']),
+                supabase.from('ventas').select('total').eq('fecha', todayStr).in('estado', ['confirmada', 'entregada', 'preparando', 'lista', 'en distribucion']),
                 supabase.from('clientes').select('saldo_actual').gt('saldo_actual', 0),
                 supabase.from('productos').select('id, nombre, stock_actual, stock_minimo')
             ]);
@@ -113,9 +110,9 @@ const Dashboard: React.FC = () => {
 
             // 2. Period Performance (Filtered by Date Range)
             const [resVPeriodo, resGPeriodo, resCPeriodo] = await Promise.all([
-                supabase.from('ventas').select('total').gte('fecha', filterStart.toISOString()).lte('fecha', filterEnd.toISOString()).in('estado', ['confirmada', 'entregada', 'preparando', 'lista']),
-                supabase.from('gastos').select('monto').gte('fecha', filterStart.toISOString()).lte('fecha', filterEnd.toISOString()),
-                supabase.from('compras').select('total').gte('fecha', filterStart.toISOString()).lte('fecha', filterEnd.toISOString()).in('estado', ['confirmada', 'recibida'])
+                supabase.from('ventas').select('total').gte('fecha', startDate).lte('fecha', endDate).in('estado', ['confirmada', 'entregada', 'preparando', 'lista', 'en distribucion']),
+                supabase.from('gastos').select('monto').gte('fecha', startDate).lte('fecha', endDate),
+                supabase.from('compras').select('total').gte('fecha', startDate).lte('fecha', endDate).in('estado', ['confirmada', 'recibida'])
             ]);
 
             setVentasPeriodo(resVPeriodo.data?.reduce((a, b) => a + Number(b.total), 0) || 0);
@@ -124,9 +121,9 @@ const Dashboard: React.FC = () => {
 
             // 3. Weekly Stats
             const [resVWeekly, resCWeekly, resGWeekly] = await Promise.all([
-                supabase.from('ventas').select('fecha, created_at, total').gte('fecha', weekStart.toISOString()).lte('fecha', weekEnd.toISOString()).in('estado', ['confirmada', 'entregada', 'preparando', 'lista']),
-                supabase.from('compras').select('fecha, created_at, total').gte('fecha', weekStart.toISOString()).lte('fecha', weekEnd.toISOString()).in('estado', ['confirmada', 'recibida']),
-                supabase.from('gastos').select('fecha, created_at, monto').gte('fecha', weekStart.toISOString()).lte('fecha', weekEnd.toISOString())
+                supabase.from('ventas').select('fecha, created_at, total').gte('fecha', format(weekStart, 'yyyy-MM-dd')).lte('fecha', format(weekEnd, 'yyyy-MM-dd')).in('estado', ['confirmada', 'entregada', 'preparando', 'lista', 'en distribucion']),
+                supabase.from('compras').select('fecha, created_at, total').gte('fecha', format(weekStart, 'yyyy-MM-dd')).lte('fecha', format(weekEnd, 'yyyy-MM-dd')).in('estado', ['confirmada', 'recibida']),
+                supabase.from('gastos').select('fecha, created_at, monto').gte('fecha', format(weekStart, 'yyyy-MM-dd')).lte('fecha', format(weekEnd, 'yyyy-MM-dd'))
             ]);
 
             const daysInterval = eachDayOfInterval({ start: weekStart, end: weekEnd });
@@ -156,10 +153,11 @@ const Dashboard: React.FC = () => {
                 .select(`
                     cantidad, producto_id, 
                     productos(nombre),
-                    ventas!inner(fecha)
+                    ventas!inner(fecha, estado)
                 `)
-                .gte('ventas.fecha', filterStart.toISOString())
-                .lte('ventas.fecha', filterEnd.toISOString())
+                .gte('ventas.fecha', startDate)
+                .lte('ventas.fecha', endDate)
+                .in('ventas.estado', ['confirmada', 'entregada', 'preparando', 'lista', 'en distribucion'])
                 .limit(2000);
 
             if (itemsv) {
@@ -182,8 +180,8 @@ const Dashboard: React.FC = () => {
                     cliente:cliente_id (razon_social, cuit),
                     vendedor:vendedor_id (nombre, apellido)
                 `)
-                .gte('fecha', filterStart.toISOString())
-                .lte('fecha', filterEnd.toISOString())
+                .gte('fecha', startDate)
+                .lte('fecha', endDate)
                 .order('fecha', { ascending: false })
                 .limit(5);
 
