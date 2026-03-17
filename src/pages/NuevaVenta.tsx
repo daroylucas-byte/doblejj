@@ -108,33 +108,32 @@ const NuevaVenta: React.FC = () => {
     const updateQuantity = (id: string, delta: number) => {
         setCart(cart.map(item => {
             if (item.id === id) {
-                const newQty = Math.max(1, item.cantidad + delta);
-                return { ...item, cantidad: newQty, subtotal: newQty * item.precio_unitario };
+                const newQty = Math.max(0.1, Math.round((item.cantidad + delta) * 100) / 100);
+                return { ...item, cantidad: newQty, subtotal: Math.round(newQty * item.precio_unitario * 100) / 100 };
             }
             return item;
         }));
     };
 
     const handleSetQuantity = (id: string, value: string) => {
-        // Allow empty string or just a minus sign temporarily for better typing experience
         if (value === '') {
             setCart(cart.map(item => item.id === id ? { ...item, cantidad: 0, subtotal: 0 } : item));
             return;
         }
 
-        const newQty = parseInt(value);
+        const newQty = parseFloat(value);
         if (isNaN(newQty)) return;
 
         setCart(cart.map(item => {
             if (item.id === id) {
-                return { ...item, cantidad: newQty, subtotal: newQty * item.precio_unitario };
+                return { ...item, cantidad: newQty, subtotal: Math.round(newQty * item.precio_unitario * 100) / 100 };
             }
             return item;
         }));
     };
 
     const handleQuantityBlur = (id: string, currentQty: number) => {
-        if (currentQty < 1) {
+        if (currentQty <= 0) {
             setCart(cart.map(item => {
                 if (item.id === id) {
                     const fallbackQty = 1;
@@ -445,7 +444,9 @@ const NuevaVenta: React.FC = () => {
                                                         className="size-8 flex items-center justify-center hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all text-lg font-black"
                                                     >-</button>
                                                     <input
-                                                        className="w-10 text-center bg-transparent border-none p-0 text-sm font-black focus:ring-0"
+                                                        className="w-12 text-center bg-transparent border-none p-0 text-sm font-black focus:ring-0"
+                                                        type="number"
+                                                        step="any"
                                                         value={item.cantidad === 0 ? '' : item.cantidad}
                                                         onChange={(e) => handleSetQuantity(item.id, e.target.value)}
                                                         onBlur={() => handleQuantityBlur(item.id, item.cantidad)}

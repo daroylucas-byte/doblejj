@@ -270,6 +270,7 @@ const ProductoModal: React.FC<ProductoModalProps> = ({ isOpen, onClose, onSucces
                                     <input
                                         name="stock_actual"
                                         type="number"
+                                        step="any"
                                         value={formData.stock_actual}
                                         onChange={handleChange}
                                         className={`w-full h-10 px-3 rounded-lg text-sm focus:ring-2 focus:ring-primary/50 font-bold ${formData.stock_actual <= formData.stock_minimo ? 'bg-red-50 dark:bg-red-900/10 text-red-600' : 'bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-white border-none'}`}
@@ -280,6 +281,7 @@ const ProductoModal: React.FC<ProductoModalProps> = ({ isOpen, onClose, onSucces
                                     <input
                                         name="stock_minimo"
                                         type="number"
+                                        step="any"
                                         value={formData.stock_minimo}
                                         onChange={handleChange}
                                         className="w-full h-10 px-3 bg-slate-50 dark:bg-zinc-800 border-none rounded-lg text-sm focus:ring-2 focus:ring-primary/50"

@@ -420,8 +420,10 @@ const NuevaCompra: React.FC = () => {
                                                     >-</button>
                                                     <input
                                                         className="w-full text-center bg-transparent border-none text-xs font-black p-0"
+                                                        type="number"
+                                                        step="any"
                                                         value={item.cantidad}
-                                                        onChange={(e) => updateItem(item.id, { cantidad: parseInt(e.target.value) || 1 })}
+                                                        onChange={(e) => updateItem(item.id, { cantidad: parseFloat(e.target.value) || 0 })}
                                                     />
                                                     <button
                                                         onClick={() => updateItem(item.id, { cantidad: item.cantidad + 1 })}

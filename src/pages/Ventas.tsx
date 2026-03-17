@@ -575,21 +575,33 @@ const Ventas: React.FC = () => {
                                                             <button 
                                                                 onClick={() => {
                                                                     const newItems = [...deliveryItems];
-                                                                    newItems[idx].cantidad = Math.max(0, newItems[idx].cantidad - 1);
+                                                                    newItems[idx].cantidad = Math.max(0, Math.round((newItems[idx].cantidad - 1) * 100) / 100);
                                                                     setDeliveryItems(newItems);
                                                                 }}
-                                                                className="size-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center"
+                                                                className="size-8 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 flex items-center justify-center hover:bg-slate-200"
                                                             >
                                                                 <span className="material-symbols-outlined text-sm">remove</span>
                                                             </button>
-                                                            <span className="text-sm font-black w-8 text-center">{item.cantidad}</span>
+                                                            <input 
+                                                                type="number"
+                                                                step="any"
+                                                                value={item.cantidad}
+                                                                onChange={(e) => {
+                                                                    const val = parseFloat(e.target.value);
+                                                                    if (isNaN(val)) return;
+                                                                    const newItems = [...deliveryItems];
+                                                                    newItems[idx].cantidad = val;
+                                                                    setDeliveryItems(newItems);
+                                                                }}
+                                                                className="text-sm font-black w-14 text-center bg-transparent border-none focus:ring-0"
+                                                            />
                                                             <button 
                                                                 onClick={() => {
                                                                     const newItems = [...deliveryItems];
-                                                                    newItems[idx].cantidad++;
+                                                                    newItems[idx].cantidad = Math.round((newItems[idx].cantidad + 1) * 100) / 100;
                                                                     setDeliveryItems(newItems);
                                                                 }}
-                                                                className="size-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center"
+                                                                className="size-8 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-400 flex items-center justify-center hover:bg-slate-200"
                                                             >
                                                                 <span className="material-symbols-outlined text-sm">add</span>
                                                             </button>
