@@ -134,7 +134,7 @@ export const generateSaleTicket = (venta: Venta, items: VentaItem[], aclaracion?
     doc.setFontSize(7);
     doc.setFont('helvetica', 'italic');
     doc.text('¡Gracias por su compra!', pageWidth / 2, sigY + 12, { align: 'center' });
-    doc.text('Ventas: 3541524255', pageWidth / 2, sigY + 16, { align: 'center' });
+    doc.text('Pedidos: 3541625537 / ADMIN: 3541625536', pageWidth / 2, sigY + 16, { align: 'center' });
 
     // Output
     const url = doc.output('bloburl');
