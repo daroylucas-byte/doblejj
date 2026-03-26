@@ -49,6 +49,7 @@ const NuevaCompra: React.FC = () => {
     const [searchProduct, setSearchProduct] = useState('');
     const [filteredProducts, setFilteredProducts] = useState<Producto[]>([]);
     const [productDropdown, setProductDropdown] = useState(false);
+    const [montoTotalManual, setMontoTotalManual] = useState<number | null>(null);
 
     const productSearchRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +80,9 @@ const NuevaCompra: React.FC = () => {
     }, [fetchData]);
 
     // Totals
-    const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+    const totalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
+    const montoFinal = montoTotalManual !== null ? montoTotalManual : totalCalculado;
+    const desperdicio = montoFinal - totalCalculado;
 
     // Cart Handlers
     const addToCart = (prod: Producto) => {
@@ -119,7 +122,9 @@ const NuevaCompra: React.FC = () => {
                 .insert([{
                     proveedor_id: selectedProveedor.id,
                     usuario_id: user?.id,
-                    total: total,
+                    total: montoFinal,
+                    subtotal: totalCalculado,
+                    desperdicio: desperdicio,
                     estado: 'recibida',
                     nro_comprobante: numeroFactura,
                     fecha: format(new Date(), 'yyyy-MM-dd')
@@ -165,20 +170,36 @@ const NuevaCompra: React.FC = () => {
                 // Aumenta la deuda del proveedor (como estaba antes)
                 const { error: balanceErr } = await supabase.rpc('update_supplier_balance', {
                     prov_id: selectedProveedor.id,
-                    amount: total,
+                    amount: montoFinal,
                     is_payment: false
                 });
 
                 if (balanceErr) {
-                    // Actually, let's just insert the charge in the current account.
+                    // Fallback: Obtener el saldo actual del proveedor para calcular el acumulado
+                    const { data: provData } = await supabase
+                        .from('proveedores')
+                        .select('saldo_actual')
+                        .eq('id', selectedProveedor.id)
+                        .single();
+                    
+                    const saldoBase = provData?.saldo_actual || 0;
+                    const nuevoSaldo = saldoBase - montoFinal; // En el sistema el saldo negativo es deuda
+
+                    // 1. Insertar en Movimientos de Cuenta Corriente
                     await supabase.from('cuenta_corriente_proveedores').insert({
                         proveedor_id: selectedProveedor.id,
                         compra_id: compra.id,
                         tipo: 'cargo',
                         concepto: `Factura ${numeroFactura || 'Compra #' + compra.id.slice(0, 8)}`,
-                        monto: -total,
+                        monto: -montoFinal, // Cargo aumenta la deuda
+                        saldo_acumulado: nuevoSaldo, // Saldo después del movimiento
                         fecha: format(new Date(), 'yyyy-MM-dd')
                     });
+
+                    // 2. Actualizar el saldo_actual en la tabla proveedores
+                    await supabase.from('proveedores')
+                        .update({ saldo_actual: nuevoSaldo })
+                        .eq('id', selectedProveedor.id);
                 }
             } else {
                 // Se pagó en el acto (Efectivo o Transferencia)
@@ -186,7 +207,7 @@ const NuevaCompra: React.FC = () => {
                 const { error: errorPago } = await supabase.from('pagos_proveedores').insert({
                     proveedor_id: selectedProveedor.id,
                     compra_id: compra.id,
-                    monto: total,
+                    monto: montoFinal,
                     forma_pago: metodoPago,
                     fecha: format(new Date(), 'yyyy-MM-dd'),
                     referencia: `Pago Inmediato s/Factura ${numeroFactura || compra.id.slice(0, 8)}`
@@ -357,12 +378,32 @@ const NuevaCompra: React.FC = () => {
                         </div>
                         <div className="bg-slate-50 dark:bg-zinc-800/50 rounded-2xl p-6 mb-6">
                             <div className="flex justify-between items-center mb-2 text-slate-400 font-bold text-xs">
-                                <span>Subtotal</span>
-                                <span>$ {total.toLocaleString()}</span>
+                                <span>Suma de Productos</span>
+                                <span>$ {totalCalculado.toLocaleString()}</span>
                             </div>
+                            
+                            <div className="mb-4">
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Monto Real de Factura</label>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-primary">$</span>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl pl-8 pr-4 py-3 text-lg font-black text-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                        value={montoTotalManual !== null ? montoTotalManual : totalCalculado}
+                                        onChange={(e) => setMontoTotalManual(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                                {desperdicio !== 0 && (
+                                    <p className={`text-[10px] font-bold uppercase mt-2 ${desperdicio > 0 ? 'text-orange-500' : 'text-emerald-500'}`}>
+                                        {desperdicio > 0 ? `Diferencia (Desperdicio): +$${desperdicio.toLocaleString()}` : `Diferencia (Ahorro): -$${Math.abs(desperdicio).toLocaleString()}`}
+                                    </p>
+                                )}
+                            </div>
+
                             <div className="flex justify-between items-center pt-4 border-t border-slate-200 dark:border-zinc-700">
-                                <span className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm">Total Compra</span>
-                                <span className="text-2xl font-black text-primary">$ {total.toLocaleString()}</span>
+                                <span className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm">Total a Pagar/Deuda</span>
+                                <span className="text-2xl font-black text-primary">$ {montoFinal.toLocaleString()}</span>
                             </div>
                         </div>
                         <button
@@ -418,18 +459,18 @@ const NuevaCompra: React.FC = () => {
                                                 <div className="flex items-center bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden">
                                                     <button
                                                         onClick={() => updateItem(item.id, { cantidad: Math.max(1, item.cantidad - 1) })}
-                                                        className="size-8 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                                        className="size-14 text-2xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800"
                                                     >-</button>
                                                     <input
-                                                        className="w-full text-center bg-transparent border-none text-xs font-black p-0"
+                                                        className="w-full text-center bg-transparent border-none text-xl font-black p-2 h-14"
                                                         type="number"
                                                         step="any"
-                                                        value={item.cantidad}
+                                                        value={item.cantidad || ''}
                                                         onChange={(e) => updateItem(item.id, { cantidad: parseFloat(e.target.value) || 0 })}
                                                     />
                                                     <button
                                                         onClick={() => updateItem(item.id, { cantidad: item.cantidad + 1 })}
-                                                        className="size-8 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800"
+                                                        className="size-14 text-2xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800"
                                                     >+</button>
                                                 </div>
                                             </div>

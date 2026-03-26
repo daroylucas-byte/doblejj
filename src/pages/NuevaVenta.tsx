@@ -33,6 +33,7 @@ interface CartItem extends Producto {
     cantidad: number;
     precio_unitario: number;
     subtotal: number;
+    tipo_precio: 'minorista' | 'mayorista' | 'revendedor';
 }
 
 const NuevaVenta: React.FC = () => {
@@ -86,6 +87,7 @@ const NuevaVenta: React.FC = () => {
     // Cart Handlers
     const addToCart = (prod: Producto) => {
         const existing = cart.find(item => item.id === prod.id);
+        const tipoPrecio = selectedCliente?.tipo || 'minorista';
         const precio = getPriceForClient(prod, selectedCliente);
 
         if (existing) {
@@ -99,7 +101,8 @@ const NuevaVenta: React.FC = () => {
                 ...prod,
                 cantidad: 1,
                 precio_unitario: precio,
-                subtotal: precio
+                subtotal: precio,
+                tipo_precio: tipoPrecio
             }]);
         }
         setSearchProduct('');
@@ -143,6 +146,24 @@ const NuevaVenta: React.FC = () => {
                 return item;
             }));
         }
+    };
+
+    const updateItemPriceType = (id: string, tipo: 'minorista' | 'mayorista' | 'revendedor') => {
+        setCart(cart.map(item => {
+            if (item.id === id) {
+                let nuevoPrecio = item.precio_minorista;
+                if (tipo === 'mayorista') nuevoPrecio = item.precio_mayorista;
+                if (tipo === 'revendedor') nuevoPrecio = item.precio_revendedor;
+
+                return {
+                    ...item,
+                    tipo_precio: tipo,
+                    precio_unitario: nuevoPrecio,
+                    subtotal: Math.round(item.cantidad * nuevoPrecio * 100) / 100
+                };
+            }
+            return item;
+        }));
     };
 
     const removeFromCart = (id: string) => {
@@ -439,13 +460,13 @@ const NuevaVenta: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">
-                                                <div className="flex items-center justify-center bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 shrink-0 width-[110px]">
+                                                <div className="flex items-center justify-center bg-slate-100 dark:bg-zinc-800 rounded-xl p-1 shrink-0 min-w-[140px]">
                                                     <button
                                                         onClick={() => updateQuantity(item.id, -1)}
                                                         className="size-8 flex items-center justify-center hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all text-lg font-black"
                                                     >-</button>
                                                     <input
-                                                        className="w-12 text-center bg-transparent border-none p-0 text-sm font-black focus:ring-0"
+                                                        className="w-20 text-center bg-transparent border-none p-0 text-sm font-black focus:ring-0"
                                                         type="number"
                                                         step="any"
                                                         value={item.cantidad === 0 ? '' : item.cantidad}
@@ -459,9 +480,17 @@ const NuevaVenta: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4 text-right">
-                                                <div className="flex flex-col">
+                                                <div className="flex flex-col items-end">
                                                     <span className="text-sm font-black text-slate-900 dark:text-white">$ {item.precio_unitario.toLocaleString()}</span>
-                                                    <span className="text-[10px] font-bold text-green-500 tracking-tighter uppercase whitespace-nowrap">Precio {selectedCliente?.tipo || 'Minorista'}</span>
+                                                    <select 
+                                                        value={item.tipo_precio}
+                                                        onChange={(e) => updateItemPriceType(item.id, e.target.value as any)}
+                                                        className="text-[10px] font-bold text-green-500 tracking-tighter uppercase bg-transparent border-none p-0 focus:ring-0 cursor-pointer hover:text-green-600 transition-colors text-right"
+                                                    >
+                                                        <option value="minorista">Minorista</option>
+                                                        <option value="mayorista">Mayorista</option>
+                                                        <option value="revendedor">Revendedor</option>
+                                                    </select>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4 text-right font-black text-sm">$ {item.subtotal.toLocaleString()}</td>

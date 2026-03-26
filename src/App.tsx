@@ -13,6 +13,7 @@ import Proveedores from './pages/Proveedores';
 import ProveedorDetalle from './pages/ProveedorDetalle';
 import NuevaCompra from './pages/NuevaCompra';
 import Caja from './pages/Caja';
+import Elaboracion from './pages/Elaboracion';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading } = useAuthStore();
@@ -124,6 +125,12 @@ function App() {
         <Route path="/caja" element={
           <ProtectedRoute>
             <Caja />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/elaboracion" element={
+          <ProtectedRoute>
+            <Elaboracion />
           </ProtectedRoute>
         } />
 
