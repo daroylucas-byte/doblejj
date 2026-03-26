@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
@@ -178,7 +179,7 @@ const NuevaVenta: React.FC = () => {
                     saldo_pendiente: total,
                     estado: 'en distribucion', // Nueva venta por defecto en distribucion
                     tipo_comprobante: 'ticket',
-                    fecha: new Date().toISOString()
+                    fecha: format(new Date(), 'yyyy-MM-dd')
                 }])
                 .select()
                 .single();
@@ -205,7 +206,7 @@ const NuevaVenta: React.FC = () => {
                     venta_id: venta.id,
                     monto: total,
                     forma_pago: metodoPago,
-                    fecha: new Date().toISOString()
+                    fecha: format(new Date(), 'yyyy-MM-dd')
                 });
 
                 if (errorPago) {

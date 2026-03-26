@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { format, parseISO } from 'date-fns';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -10,6 +11,7 @@ interface Venta {
     id: string;
     numero: string;
     fecha: string;
+    created_at?: string;
     cliente_id: string;
     vendedor_id: string;
     cliente: { id: string; razon_social: string; cuit: string; saldo_actual: number };
@@ -66,6 +68,11 @@ const Ventas: React.FC = () => {
     const [clienteFilter, setClienteFilter] = useState('Todos');
     const [vendedorFilter, setVendedorFilter] = useState('Todos');
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const itemsPerPage = 15;
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -76,28 +83,38 @@ const Ventas: React.FC = () => {
             setVendedores(sellersData || []);
 
             // Fetch Ventas
+            const from = (currentPage - 1) * itemsPerPage;
+            const to = from + itemsPerPage - 1;
+
             let query = supabase
                 .from('ventas')
                 .select(`
-                    id, numero, fecha, estado, total, total_pagado, saldo_pendiente, tipo_comprobante, cliente_id, vendedor_id,
+                    id, numero, fecha, created_at, estado, total, total_pagado, saldo_pendiente, tipo_comprobante, cliente_id, vendedor_id,
                     cliente:cliente_id (id, razon_social, cuit, saldo_actual),
                     vendedor:vendedor_id (id, nombre, apellido)
-                `)
-                .order('fecha', { ascending: false });
+                `, { count: 'exact' })
+                .order('created_at', { ascending: false }) // Priorizar orden por creación exacto
+                .range(from, to);
 
             if (statusFilter !== 'Todos') query = query.eq('estado', statusFilter.toLowerCase());
             if (clienteFilter !== 'Todos') query = query.eq('cliente_id', clienteFilter);
             if (vendedorFilter !== 'Todos') query = query.eq('vendedor_id', vendedorFilter);
             if (searchTerm) query = query.ilike('numero', `%${searchTerm}%`);
 
-            const { data, error } = await query;
+            const { data, error, count } = await query;
             if (error) throw error;
             setVentas(data as any[] || []);
+            setTotalCount(count || 0);
         } catch (error) {
             console.error('Error fetching sales:', error);
         } finally {
             setLoading(false);
         }
+    }, [statusFilter, clienteFilter, vendedorFilter, searchTerm, currentPage]);
+
+    // Reset page on filter change
+    useEffect(() => {
+        setCurrentPage(1);
     }, [statusFilter, clienteFilter, vendedorFilter, searchTerm]);
 
     const handleOpenModal = async (venta: Venta) => {
@@ -476,7 +493,9 @@ const Ventas: React.FC = () => {
                                     ventas.map((v) => (
                                         <tr key={v.id} className="group hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
                                             <td className="px-6 py-4 text-sm font-black text-primary">#{v.numero || 'S/N'}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-500">{new Date(v.fecha).toLocaleDateString()}</td>
+                                            <td className="px-6 py-4 text-sm text-slate-500">
+                                                {v.created_at ? format(new Date(v.created_at), 'dd/MM/yyyy HH:mm') : format(parseISO(v.fecha), 'dd/MM/yyyy')}
+                                            </td>
                                             <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-white">{v.cliente?.razon_social || 'N/A'}</td>
                                             <td className="px-6 py-4 text-sm text-slate-500 font-medium">{v.vendedor ? `${v.vendedor.nombre} ${v.vendedor.apellido}` : 'Sistema'}</td>
                                             <td className="px-6 py-4">
@@ -530,6 +549,32 @@ const Ventas: React.FC = () => {
                                 )}
                             </tbody>
                         </table>
+
+                        {/* Pagination Controls */}
+                        <div className="px-6 py-4 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between bg-slate-50/50 dark:bg-zinc-900/50">
+                            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                                Mostrando <span className="text-slate-900 dark:text-white">{ventas.length}</span> de <span className="text-slate-900 dark:text-white">{totalCount}</span> ventas
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    className="size-10 rounded-xl border border-slate-200 dark:border-zinc-800 flex items-center justify-center text-slate-500 hover:bg-white dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-base">chevron_left</span>
+                                </button>
+                                <div className="px-4 py-2 bg-white dark:bg-zinc-800 rounded-xl border border-slate-200 dark:border-zinc-800 text-[10px] font-black text-primary uppercase tracking-tighter">
+                                    Página {currentPage} de {Math.max(1, Math.ceil(totalCount / itemsPerPage))}
+                                </div>
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalCount / itemsPerPage), prev + 1))}
+                                    disabled={currentPage >= Math.ceil(totalCount / itemsPerPage)}
+                                    className="size-10 rounded-xl border border-slate-200 dark:border-zinc-800 flex items-center justify-center text-slate-500 hover:bg-white dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-base">chevron_right</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

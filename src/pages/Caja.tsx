@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { format, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
@@ -69,7 +70,7 @@ export default function Caja() {
                 if (!fromDate) {
                     const startOfDay = new Date();
                     startOfDay.setHours(0, 0, 0, 0);
-                    fromDate = startOfDay.toISOString();
+                    fromDate = format(new Date(), 'yyyy-MM-dd');
                 }
             } else {
                 // Modo filtro de fechas (ignora el cierre anterior)
@@ -85,23 +86,23 @@ export default function Caja() {
                 currentSaldoInicial = 0; // Para reportes históricos no arrastramos saldo salvo que calculemos todo el historial
             }
 
-            setFechaApertura(fromDate || new Date().toISOString());
+            setFechaApertura(fromDate || format(new Date(), 'yyyy-MM-dd'));
             setSaldoInicial(currentSaldoInicial);
 
             // 2. Traer Ingresos 
             // NUEVO: Pagos explícitos (Efectivo/Transferencia)
             let queryPagos = supabase
                 .from('pagos')
-                .select('id, monto, forma_pago, created_at, venta_id')
-                .gte('created_at', fromDate);
-            if (toDate) queryPagos = queryPagos.lte('created_at', toDate);
+                .select('id, monto, forma_pago, created_at, venta_id, fecha')
+                .gte('fecha', fromDate);
+            if (toDate) queryPagos = queryPagos.lte('fecha', toDate);
             const { data: pagosData } = await queryPagos;
 
             const pagosRecibidos = (pagosData || []).filter(p => p.forma_pago === 'efectivo' || p.forma_pago === 'transferencia' || p.forma_pago === 'tarjeta');
 
             // LEGACY: Ventas cobradas en el momento (ventas históricas que no usaban la tabla pagos)
-            let queryVentas = supabase.from('ventas').select('id, total, saldo_pendiente, created_at, numero, estado').gte('created_at', fromDate);
-            if (toDate) queryVentas = queryVentas.lte('created_at', toDate);
+            let queryVentas = supabase.from('ventas').select('id, total, saldo_pendiente, created_at, numero, estado, fecha').gte('fecha', fromDate);
+            if (toDate) queryVentas = queryVentas.lte('fecha', toDate);
             const { data: ventasData } = await queryVentas;
 
             const pagosAsociadosIds = new Set((pagosData || []).map(p => p.venta_id));
@@ -126,20 +127,20 @@ export default function Caja() {
             // NUEVO: Pagos realizados a proveedores
             let queryPagosProv = supabase
                 .from('pagos_proveedores')
-                .select('id, monto, forma_pago, created_at, compra_id')
-                .gte('created_at', fromDate);
-            if (toDate) queryPagosProv = queryPagosProv.lte('created_at', toDate);
+                .select('id, monto, forma_pago, created_at, compra_id, fecha')
+                .gte('fecha', fromDate);
+            if (toDate) queryPagosProv = queryPagosProv.lte('fecha', toDate);
             const { data: pagosProvData } = await queryPagosProv;
 
             const pagosRealizados = (pagosProvData || []).filter(p => p.forma_pago === 'efectivo' || p.forma_pago === 'transferencia');
 
             // LEGACY: Compras pagadas (compras históricas que no están en cta. cte.)
-            let queryCompras = supabase.from('compras').select('id, total, created_at, nro_comprobante, estado').gte('created_at', fromDate);
-            if (toDate) queryCompras = queryCompras.lte('created_at', toDate);
+            let queryCompras = supabase.from('compras').select('id, total, created_at, nro_comprobante, estado, fecha').gte('fecha', fromDate);
+            if (toDate) queryCompras = queryCompras.lte('fecha', toDate);
             const { data: comprasData } = await queryCompras;
 
-            let queryCtaCte = supabase.from('cuenta_corriente_proveedores').select('compra_id').gte('created_at', fromDate);
-            if (toDate) queryCtaCte = queryCtaCte.lte('created_at', toDate);
+            let queryCtaCte = supabase.from('cuenta_corriente_proveedores').select('compra_id, fecha').gte('fecha', fromDate);
+            if (toDate) queryCtaCte = queryCtaCte.lte('fecha', toDate);
             const { data: ctaCteProv } = await queryCtaCte;
 
             const comprasEnCtaCteIds = new Set((ctaCteProv || []).map(c => c.compra_id));
@@ -154,9 +155,9 @@ export default function Caja() {
             // Gastos
             let queryGastos = supabase
                 .from('gastos')
-                .select('id, monto, created_at, concepto')
-                .gte('created_at', fromDate);
-            if (toDate) queryGastos = queryGastos.lte('created_at', toDate);
+                .select('id, monto, created_at, concepto, fecha')
+                .gte('fecha', fromDate);
+            if (toDate) queryGastos = queryGastos.lte('fecha', toDate);
             const { data: gastosData } = await queryGastos;
 
             const egresosEfvoVal = pagosRealizados.filter(p => p.forma_pago === 'efectivo').reduce((acc, p) => acc + (p.monto || 0), 0) +
@@ -379,8 +380,8 @@ export default function Caja() {
                             {isCustomDate ? 'Rango Analizado' : 'Apertura'}
                         </p>
                         <h3 className="text-xl font-black text-slate-800 dark:text-white mb-1">
-                            {isCustomDate && dateRange.from ? new Date(dateRange.from + 'T00:00:00').toLocaleDateString() : new Date(fechaApertura).toLocaleDateString()}
-                            {isCustomDate && dateRange.to ? ` al ${new Date(dateRange.to + 'T00:00:00').toLocaleDateString()}` : ''}
+                            {isCustomDate && dateRange.from ? format(parseISO(dateRange.from), 'dd/MM/yyyy') : format(parseISO(fechaApertura), 'dd/MM/yyyy')}
+                            {isCustomDate && dateRange.to ? ` al ${format(parseISO(dateRange.to), 'dd/MM/yyyy')}` : ''}
                         </h3>
                         {!isCustomDate && (
                             <p className="text-xs font-bold text-slate-500">{new Date(fechaApertura).toLocaleTimeString()}</p>

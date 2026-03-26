@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { format, parseISO } from 'date-fns';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -237,7 +238,7 @@ const ClienteDetalle: React.FC = () => {
                             <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ultima Actividad</p>
                                 <p className="text-sm font-black text-slate-900 dark:text-white mt-1">
-                                    {ventas[0] ? new Date(ventas[0].fecha).toLocaleDateString() : 'Sin actividad'}
+                                    {ventas[0] ? format(parseISO(ventas[0].fecha), 'dd/MM/yyyy') : 'Sin actividad'}
                                 </p>
                                 <span className="text-[10px] font-bold text-slate-400">Fecha de última factura</span>
                             </div>
@@ -290,7 +291,7 @@ const ClienteDetalle: React.FC = () => {
                                                 <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
                                                     {movimientos.map(m => (
                                                         <tr key={m.id} className="text-sm">
-                                                            <td className="py-3 text-slate-500">{new Date(m.fecha).toLocaleDateString()}</td>
+                                                            <td className="py-3 text-slate-500">{format(parseISO(m.fecha), 'dd/MM/yyyy')}</td>
                                                             <td className="py-3 font-bold">{m.concepto}</td>
                                                             <td className="py-3 capitalize">
                                                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${m.tipo === 'pago' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
@@ -322,7 +323,7 @@ const ClienteDetalle: React.FC = () => {
                                             <div key={v.id} className="p-4 rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/20 group hover:border-primary/50 transition-all">
                                                 <div className="flex justify-between items-start">
                                                     <div>
-                                                        <p className="text-[10px] font-black text-slate-400 uppercase">{new Date(v.fecha).toLocaleDateString()}</p>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase">{format(parseISO(v.fecha), 'dd/MM/yyyy')}</p>
                                                         <h5 className="font-black text-slate-900 dark:text-white">Factura #{v.numero || 'S/N'}</h5>
                                                     </div>
                                                     <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${v.estado === 'entregada' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>

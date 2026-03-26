@@ -8,7 +8,6 @@ import {
     endOfWeek, 
     eachDayOfInterval, 
     format, 
-    isSameDay, 
     parseISO, 
     startOfMonth
 } from 'date-fns';
@@ -79,9 +78,7 @@ const Dashboard: React.FC = () => {
     const fetchDashboardData = async () => {
         try {
             setLoading(true);
-
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
             
             // Current Week calculation for the bar chart
             const now = new Date();
@@ -89,7 +86,6 @@ const Dashboard: React.FC = () => {
             const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
             // 1. Snapshot Metrics (Global/Static)
-            const todayStr = format(new Date(), 'yyyy-MM-dd');
             const [resHoy, resClientes, resProductos] = await Promise.all([
                 supabase.from('ventas').select('total').eq('fecha', todayStr).in('estado', ['confirmada', 'entregada', 'preparando', 'lista', 'en distribucion']),
                 supabase.from('clientes').select('saldo_actual').gt('saldo_actual', 0),
@@ -129,9 +125,10 @@ const Dashboard: React.FC = () => {
             let maxValue = 1000;
 
             const formattedWeekly = daysInterval.map(day => {
-                const dv = (resVWeekly.data || []).filter(v => isSameDay(parseISO(v.fecha || v.created_at), day)).reduce((a, b) => a + Number(b.total), 0);
-                const dc = (resCWeekly.data || []).filter(c => isSameDay(parseISO(c.fecha || c.created_at), day)).reduce((a, b) => a + Number(b.total), 0);
-                const dg = (resGWeekly.data || []).filter(g => isSameDay(parseISO(g.fecha || g.created_at), day)).reduce((a, b) => a + Number(b.monto), 0);
+                const dayStr = format(day, 'yyyy-MM-dd');
+                const dv = (resVWeekly.data || []).filter(v => (v.fecha === dayStr)).reduce((a, b) => a + Number(b.total), 0);
+                const dc = (resCWeekly.data || []).filter(c => (c.fecha === dayStr)).reduce((a, b) => a + Number(b.total), 0);
+                const dg = (resGWeekly.data || []).filter(g => (g.fecha === dayStr)).reduce((a, b) => a + Number(b.monto), 0);
                 
                 const localMax = Math.max(dv, dc, dg);
                 if (localMax > maxValue) maxValue = localMax;
@@ -181,7 +178,7 @@ const Dashboard: React.FC = () => {
                 `)
                 .gte('fecha', startDate)
                 .lte('fecha', endDate)
-                .order('fecha', { ascending: false })
+                .order('created_at', { ascending: false })
                 .limit(5);
 
             if (recientes) setVentasRecientes(recientes as any[]);

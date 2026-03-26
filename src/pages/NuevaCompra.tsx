@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { format } from 'date-fns';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -121,7 +122,7 @@ const NuevaCompra: React.FC = () => {
                     total: total,
                     estado: 'recibida',
                     nro_comprobante: numeroFactura,
-                    fecha: new Date().toISOString()
+                    fecha: format(new Date(), 'yyyy-MM-dd')
                 }])
                 .select()
                 .single();
@@ -176,7 +177,7 @@ const NuevaCompra: React.FC = () => {
                         tipo: 'cargo',
                         concepto: `Factura ${numeroFactura || 'Compra #' + compra.id.slice(0, 8)}`,
                         monto: -total,
-                        // saldo_acumulado: // we would need to calculate this properly, preferably via a trigger/RPC. We leave it null for now if RPC fails so trigger can handle it
+                        fecha: format(new Date(), 'yyyy-MM-dd')
                     });
                 }
             } else {
@@ -186,8 +187,9 @@ const NuevaCompra: React.FC = () => {
                     proveedor_id: selectedProveedor.id,
                     compra_id: compra.id,
                     monto: total,
-                    metodo_pago: metodoPago,
-                    notas: `Pago Inmediato s/Factura ${numeroFactura || compra.id.slice(0, 8)}`
+                    forma_pago: metodoPago,
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
+                    referencia: `Pago Inmediato s/Factura ${numeroFactura || compra.id.slice(0, 8)}`
                 });
 
                 if (errorPago) {

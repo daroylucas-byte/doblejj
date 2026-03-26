@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { format, parseISO } from 'date-fns';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -288,7 +289,7 @@ const ProveedorDetalle: React.FC = () => {
                                             ) : (
                                                 movimientos.map(m => (
                                                     <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                                                        <td className="px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">{new Date(m.fecha).toLocaleDateString()}</td>
+                                                        <td className="px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">{format(parseISO(m.fecha), 'dd/MM/yyyy')}</td>
                                                         <td className="px-6 py-4">
                                                             <div className="flex items-center gap-2">
                                                                 <span className={`material-symbols-outlined text-base ${m.tipo === 'pago' ? 'text-emerald-500' : 'text-red-500'
@@ -333,7 +334,7 @@ const ProveedorDetalle: React.FC = () => {
                                                         <td className="px-6 py-4">
                                                             <div className="font-black text-slate-900 dark:text-white uppercase tracking-tighter">#{c.numero_factura || 'S/N'}</div>
                                                         </td>
-                                                        <td className="px-6 py-4 text-xs font-bold text-slate-500">{new Date(c.fecha).toLocaleDateString()}</td>
+                                                        <td className="px-6 py-4 text-xs font-bold text-slate-500">{format(parseISO(c.fecha), 'dd/MM/yyyy')}</td>
                                                         <td className="px-6 py-4">
                                                             <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${c.estado === 'recibida' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
                                                                 : 'bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'

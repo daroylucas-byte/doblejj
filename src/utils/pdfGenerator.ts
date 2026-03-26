@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 
@@ -26,6 +26,7 @@ interface Venta {
     id: string;
     numero?: string;
     fecha: string;
+    created_at?: string;
     total: number;
     estado: string;
     clientes?: Cliente;
@@ -65,7 +66,11 @@ export const generateSaleTicket = (venta: Venta, items: VentaItem[], aclaracion?
     // Sale Info
     doc.setFontSize(8);
     doc.text(`Ticket Nro: ${venta.numero || venta.id.slice(0, 8)}`, margin, 41);
-    doc.text(`Fecha: ${format(new Date(venta.fecha), 'dd/MM/yyyy HH:mm', { locale: es })}`, margin, 45);
+    
+    // Use created_at (UTC) which new Date() converts to local time correctly, 
+    // or parseISO(venta.fecha) as fallback for local date matching.
+    const ticketDate = venta.created_at ? new Date(venta.created_at) : parseISO(venta.fecha);
+    doc.text(`Fecha: ${format(ticketDate, 'dd/MM/yyyy HH:mm', { locale: es })}`, margin, 45);
     doc.text(`Estado: ${venta.estado.toUpperCase()}`, margin, 49);
     
     // Client Info
