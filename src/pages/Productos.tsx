@@ -84,27 +84,29 @@ const Productos: React.FC = () => {
     return (
         <Layout>
             <MainHeader title="Catálogo de Productos">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 mt-4 sm:mt-0 justify-end">
                     <button
-                        className="flex items-center justify-center gap-2 rounded-lg h-10 px-4 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95 border border-slate-200 dark:border-zinc-700"
+                        className="flex items-center justify-center gap-2 rounded-lg h-10 px-2 sm:px-4 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 text-[10px] sm:text-xs font-bold uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95 border border-slate-200 dark:border-zinc-700 whitespace-nowrap"
                     >
                         <span className="material-symbols-outlined text-sm">inventory_2</span>
-                        <span>Ajustar Stock</span>
+                        <span className="hidden sm:inline">Ajustar Stock</span>
+                        <span className="sm:hidden">Stock</span>
                     </button>
                     <button
                         onClick={handleNew}
-                        className="flex items-center justify-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95"
+                        className="flex items-center justify-center gap-2 rounded-lg h-10 px-2 sm:px-4 bg-primary text-white text-[10px] sm:text-sm font-bold shadow-md shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95 whitespace-nowrap"
                     >
                         <span className="material-symbols-outlined text-sm">add_box</span>
-                        <span>Nuevo Producto</span>
+                        <span className="hidden sm:inline">Nuevo Producto</span>
+                        <span className="sm:hidden">Nuevo</span>
                     </button>
                 </div>
             </MainHeader>
 
-            <div className="p-8 space-y-6 max-w-[1500px] mx-auto w-full">
+            <div className="p-4 sm:p-8 space-y-4 sm:space-y-6 max-w-[1500px] mx-auto w-full">
 
                 {/* Search and Quick Filters */}
-                <div className="flex flex-col md:flex-row gap-4 items-center bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-all duration-300">
+                <div className="flex flex-col lg:flex-row gap-4 lg:items-center bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-all duration-300">
                     <div className="relative flex-1">
                         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
                         <input
@@ -140,13 +142,13 @@ const Productos: React.FC = () => {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Código</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Producto</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Categoría / Unidad</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Stock</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Estado</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-right whitespace-nowrap">Precios (Min/May/Rev)</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Acciones</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest hidden sm:table-cell">Código</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Producto</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest hidden md:table-cell">Categoría / Unidad</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Stock</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest hidden sm:table-cell">Estado</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-right whitespace-nowrap hidden lg:table-cell">Precios (Min/May/Rev)</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -172,27 +174,33 @@ const Productos: React.FC = () => {
                                             key={prod.id}
                                             className={`group hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors ${!prod.activo ? 'opacity-50 grayscale' : ''}`}
                                         >
-                                            <td className="px-6 py-4 font-mono text-xs font-black text-primary/70">{prod.codigo || 'N/A'}</td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-4 font-mono text-xs font-black text-primary/70 hidden sm:table-cell">{prod.codigo || 'N/A'}</td>
+                                            <td className="px-3 sm:px-6 py-4">
                                                 <div className="flex flex-col">
-                                                    <span className="font-black text-slate-900 dark:text-slate-100 transition-colors">{prod.nombre}</span>
+                                                    <span className="font-black text-sm text-slate-900 dark:text-slate-100 transition-colors line-clamp-2">{prod.nombre}</span>
                                                     {prod.descripcion && (
                                                         <span className="text-[10px] text-slate-400 line-clamp-1">{prod.descripcion}</span>
                                                     )}
+                                                    <div className="sm:hidden mt-0.5 flex items-center gap-2">
+                                                        <span className="text-[10px] font-bold text-primary">${prod.precio_minorista.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                                                        <span className={`text-[9px] font-black uppercase ${prod.stock_actual <= prod.stock_minimo ? 'text-red-500' : 'text-green-500'}`}>
+                                                            {prod.stock_actual <= prod.stock_minimo ? 'BAJO' : 'OK'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-4 hidden md:table-cell">
                                                 <div className="flex flex-col gap-1">
                                                     <span className="text-[10px] font-bold text-slate-500 uppercase">{prod.categorias?.nombre || 'General'}</span>
                                                     <span className="text-[9px] font-black text-slate-400 uppercase bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded w-fit">{prod.unidad_medida}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-center">
+                                            <td className="px-3 sm:px-6 py-4 text-center">
                                                 <span className={`text-base font-black ${prod.stock_actual <= prod.stock_minimo ? 'text-red-500 animate-pulse' : 'text-slate-900 dark:text-slate-100'}`}>
                                                     {prod.stock_actual}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-4 hidden sm:table-cell">
                                                 <div className="flex items-center gap-2">
                                                     <div className={`size-2 rounded-full ${prod.stock_actual <= prod.stock_minimo ? 'bg-red-500' : 'bg-green-500'}`}></div>
                                                     <span className={`text-[10px] font-black uppercase tracking-wider ${prod.stock_actual <= prod.stock_minimo ? 'text-red-500' : 'text-green-500'}`}>
@@ -200,7 +208,7 @@ const Productos: React.FC = () => {
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-right">
+                                            <td className="px-3 sm:px-6 py-4 text-right hidden lg:table-cell">
                                                 <div className="flex flex-col gap-0.5">
                                                     <span className="text-xs font-black text-primary">$ {prod.precio_minorista.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
                                                     <div className="flex justify-end gap-2 text-[10px] font-bold text-slate-400">
@@ -209,7 +217,7 @@ const Productos: React.FC = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 text-center border-l border-slate-50 dark:border-zinc-800">
+                                            <td className="px-3 sm:px-6 py-4 text-center border-l border-slate-50 dark:border-zinc-800">
                                                 <button
                                                     onClick={() => handleEdit(prod)}
                                                     className="p-2 text-slate-400 hover:text-primary transition-all hover:bg-primary/10 rounded-lg group"

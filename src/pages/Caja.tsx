@@ -328,16 +328,16 @@ export default function Caja() {
                 <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-500/20">Finanzas</span>
             </MainHeader>
 
-            <div className="p-8 max-w-[1600px] mx-auto w-full space-y-6">
+            <div className="p-4 lg:p-8 max-w-[1600px] mx-auto w-full space-y-4 lg:space-y-6 pb-24 lg:pb-8">
 
                 {/* Filtros */}
-                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2rem] p-6 shadow-sm flex flex-col md:flex-row items-center gap-4 justify-between">
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl lg:rounded-[2rem] p-4 lg:p-6 shadow-sm flex flex-col lg:flex-row items-center gap-4 justify-between">
                     <div>
                         <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">calendar_month</span>
                             Filtros de Balance
                         </h2>
-                        <p className="text-xs text-slate-500 font-medium mt-1">Seleccioná un rango para ver operaciones pasadas. Dejar vacío para ver el Turno Actual.</p>
+                        <p className="text-xs text-slate-500 font-medium mt-1">Seleccioná un rango para ver operaciones pasadas o dejá vacío para el Turno Actual.</p>
                     </div>
                     <div className="flex items-center gap-3 w-full md:w-auto">
                         <div className="flex flex-col">
@@ -371,8 +371,8 @@ export default function Caja() {
                 </div>
 
                 {/* Balance Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-6 border border-slate-200 dark:border-zinc-800 shadow-sm relative overflow-hidden group">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                    <div className="bg-white dark:bg-zinc-900 rounded-3xl lg:rounded-[2rem] p-5 lg:p-6 border border-slate-200 dark:border-zinc-800 shadow-sm relative overflow-hidden group">
                         <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-500">
                             <span className="material-symbols-outlined text-6xl text-slate-500">account_balance_wallet</span>
                         </div>
@@ -388,7 +388,7 @@ export default function Caja() {
                         )}
                     </div>
 
-                    <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-6 border border-emerald-200 dark:border-emerald-900/30 shadow-sm flex flex-col justify-between">
+                    <div className="bg-white dark:bg-zinc-900 rounded-3xl lg:rounded-[2rem] p-5 lg:p-6 border border-emerald-200 dark:border-emerald-900/30 shadow-sm flex flex-col justify-between">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-2 flex items-center gap-1">
                                 <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
@@ -424,11 +424,11 @@ export default function Caja() {
                         </h3>
                     </div>
 
-                    <div className="bg-primary rounded-[2rem] p-6 text-white shadow-lg shadow-primary/20 flex flex-col justify-center">
+                    <div className="bg-primary rounded-3xl lg:rounded-[2rem] p-5 lg:p-6 text-white shadow-lg shadow-primary/20 flex flex-col justify-center">
                         <p className="text-[10px] font-black uppercase tracking-widest text-white/70 mb-2">
                             Saldo Teórico (EFECTIVO)
                         </p>
-                        <h3 className="text-4xl font-black tracking-tighter">
+                        <h3 className="text-3xl lg:text-4xl font-black tracking-tighter">
                             $ {saldoReal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                         </h3>
                         <p className="text-[10px] font-bold text-white/50 mt-2 uppercase tracking-widest">
@@ -438,26 +438,27 @@ export default function Caja() {
                 </div>
 
                 {!isCustomDate && (
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                         <button
                             onClick={() => setEgresoModalOpen(true)}
-                            className="bg-white dark:bg-zinc-800 text-rose-500 border border-rose-200 dark:border-rose-900/30 hover:scale-105 active:scale-95 transition-all outline-none font-black text-sm uppercase tracking-widest rounded-xl px-8 py-4 shadow-lg flex items-center gap-2"
+                            className="bg-white dark:bg-zinc-800 text-rose-500 border border-rose-200 dark:border-rose-900/30 hover:scale-[1.02] sm:hover:scale-105 active:scale-95 transition-all outline-none font-black text-xs lg:text-sm uppercase tracking-widest rounded-xl px-6 lg:px-8 py-4 shadow-lg flex items-center justify-center gap-2"
                         >
                             <span className="material-symbols-outlined">money_off</span>
-                            Registrar Egreso / Retiro
+                            Registrar Egreso
                         </button>
                         <button
                             onClick={() => setCierreModalOpen(true)}
-                            className="bg-slate-900 dark:bg-white text-white dark:text-zinc-900 hover:scale-105 active:scale-95 transition-all outline-none font-black text-sm uppercase tracking-widest rounded-xl px-8 py-4 shadow-lg flex items-center gap-2"
+                            className="bg-slate-900 dark:bg-white text-white dark:text-zinc-900 hover:scale-[1.02] sm:hover:scale-105 active:scale-95 transition-all outline-none font-black text-xs lg:text-sm uppercase tracking-widest rounded-xl px-6 lg:px-8 py-4 shadow-lg flex items-center justify-center gap-2"
                         >
                             <span className="material-symbols-outlined">point_of_sale</span>
-                            Realizar Cierre de Caja
+                            Realizar Cierre
                         </button>
-                        <p className="text-xs text-slate-500 font-bold max-w-lg">
+                        <p className="text-[10px] lg:text-xs text-slate-500 font-bold max-w-lg text-center sm:text-left">
                             Al realizar el cierre, este saldo se guardará como Saldo Final y se tomará como Saldo Inicial para el siguiente turno.
                         </p>
                     </div>
                 )}
+
 
                 {/* Movimientos Table */}
                 <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-sm mt-8">
@@ -471,10 +472,10 @@ export default function Caja() {
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha y Hora</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Concepto</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Tipo</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Monto</th>
+                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha y Hora</th>
+                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Concepto</th>
+                                    <th className="hidden md:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Tipo</th>
+                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Monto</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -488,22 +489,22 @@ export default function Caja() {
                                 ) : (
                                     movimientos.map((m, idx) => (
                                         <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                                            <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                                            <td className="px-4 md:px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">
                                                 {new Date(m.fecha).toLocaleString()}
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="font-black text-slate-900 dark:text-white uppercase tracking-tighter">
+                                            <td className="px-4 md:px-6 py-4">
+                                                <div className="font-black text-slate-900 dark:text-white uppercase tracking-tighter line-clamp-2 md:line-clamp-none">
                                                     {m.concepto}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="hidden md:table-cell px-4 md:px-6 py-4">
                                                 <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${m.tipo === 'ingreso' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
                                                     : 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
                                                     }`}>
                                                     {m.tipo}
                                                 </span>
                                             </td>
-                                            <td className={`px-6 py-4 text-right text-sm font-black ${m.tipo === 'ingreso' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                            <td className={`px-4 md:px-6 py-4 text-right text-sm font-black whitespace-nowrap ${m.tipo === 'ingreso' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                                                 }`}>
                                                 {m.tipo === 'ingreso' ? '+' : '-'} $ {m.monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                                             </td>
@@ -527,41 +528,41 @@ export default function Caja() {
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha Cierre</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Efectivo (Arqueo)</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Transferencia</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Tarjeta</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Total General</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Acciones</th>
+                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha Cierre</th>
+                                    <th className="hidden sm:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Efectivo</th>
+                                    <th className="hidden lg:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Transferencia</th>
+                                    <th className="hidden lg:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Tarjeta</th>
+                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Total General</th>
+                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                 {historialCierres.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-400 text-xs font-bold">
+                                        <td colSpan={6} className="px-6 py-8 text-center text-slate-400 text-xs font-bold">
                                             No hay cierres registrados aún
                                         </td>
                                     </tr>
                                 ) : (
                                     historialCierres.map((c, idx) => (
                                         <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                                            <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                                            <td className="px-4 md:px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">
                                                 {new Date(c.fecha_cierre).toLocaleString()}
                                             </td>
-                                            <td className="px-6 py-4 text-center">
+                                            <td className="hidden sm:table-cell px-4 md:px-6 py-4 text-center">
                                                 <div className="text-xs font-black text-slate-900 dark:text-white">$ {c.saldo_real?.toLocaleString('es-AR')}</div>
                                                 <div className="text-[9px] text-slate-400 font-bold uppercase">Sist: ${c.saldo_teorico?.toLocaleString('es-AR')}</div>
                                             </td>
-                                            <td className="px-6 py-4 text-center text-xs font-black text-blue-500">
+                                            <td className="hidden lg:table-cell px-4 md:px-6 py-4 text-center text-xs font-black text-blue-500">
                                                 $ {(c.total_transferencia || 0).toLocaleString('es-AR')}
                                             </td>
-                                            <td className="px-6 py-4 text-center text-xs font-black text-purple-500">
+                                            <td className="hidden lg:table-cell px-4 md:px-6 py-4 text-center text-xs font-black text-purple-500">
                                                 $ {(c.total_tarjeta || 0).toLocaleString('es-AR')}
                                             </td>
-                                            <td className="px-6 py-4 text-center text-xs font-black text-slate-700 dark:text-slate-200">
+                                            <td className="px-4 md:px-6 py-4 text-center text-xs font-black text-slate-700 dark:text-slate-200">
                                                 $ {c.total_ingresos?.toLocaleString('es-AR')}
                                             </td>
-                                            <td className="px-6 py-4 text-right">
+                                            <td className="px-4 md:px-6 py-4 text-right">
                                                 <button 
                                                     onClick={() => { setSelectedCierre(c); setDetalleCierreOpen(true); }}
                                                     className="p-2 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-lg text-slate-600 dark:text-slate-400 transition-all"

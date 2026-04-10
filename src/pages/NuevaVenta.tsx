@@ -336,12 +336,12 @@ const NuevaVenta: React.FC = () => {
                 <span className="px-3 py-1 bg-green-500/10 text-green-500 text-[10px] font-black uppercase tracking-widest rounded-full border border-green-500/20">Terminal Activo</span>
             </MainHeader>
 
-            <div className="flex-1 flex gap-6 p-6 overflow-hidden">
+            <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-x-hidden overflow-y-auto lg:overflow-hidden">
                 {/* Left Panel: Selection & Table (Flex-[2]) */}
-                <div className="flex-[2] flex flex-col gap-6 overflow-hidden">
+                <div className="flex-shrink-0 lg:flex-[2] flex flex-col gap-6 lg:overflow-hidden overflow-visible">
 
                     {/* Selector Section */}
-                    <div className="grid grid-cols-2 gap-4 shrink-0">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 shrink-0">
                         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl shadow-sm transition-all hover:shadow-md relative" ref={clienteSearchRef}>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">1. Seleccionar Cliente</label>
                             <div className="relative group">
@@ -453,9 +453,9 @@ const NuevaVenta: React.FC = () => {
                                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                     {cart.map(item => (
                                         <tr key={item.id} className="group hover:bg-slate-50 dark:hover:bg-zinc-800/20 transition-colors">
-                                            <td className="px-4 py-4">
+                                            <td className="px-4 py-4 min-w-[150px]">
                                                 <div className="flex flex-col">
-                                                    <span className="font-black text-sm text-slate-900 dark:text-white">{item.nombre}</span>
+                                                    <span className="font-black text-sm text-slate-900 dark:text-white line-clamp-2">{item.nombre}</span>
                                                     <span className="text-[10px] font-bold text-slate-400">{item.codigo || 'S/N'}</span>
                                                 </div>
                                             </td>
@@ -519,7 +519,7 @@ const NuevaVenta: React.FC = () => {
                 </div>
 
                 {/* Right Panel: Totals & Payments (W-96) */}
-                <div className="w-[420px] flex flex-col gap-6 overflow-y-auto shrink-0 pr-2 pb-6 custom-scrollbar">
+                <div className="w-full lg:w-[420px] flex flex-col gap-6 overflow-y-visible lg:overflow-y-auto shrink-0 lg:pr-2 lg:pb-6 lg:custom-scrollbar">
 
                     {/* Payment Method Selection */}
                     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm transition-all hover:shadow-md">

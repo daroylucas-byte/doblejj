@@ -398,10 +398,10 @@ const Ventas: React.FC = () => {
                 </Link>
             </MainHeader>
 
-            <div className="p-8 max-w-[1600px] mx-auto w-full space-y-6">
+            <div className="p-4 sm:p-8 max-w-[1600px] mx-auto w-full space-y-4 sm:space-y-6 pb-24 lg:pb-8">
 
                 {/* Filters Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-all duration-300">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 bg-white dark:bg-zinc-900 p-4 sm:p-6 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-all duration-300">
                     <div className="flex flex-col gap-1.5">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Buscar Orden</label>
                         <div className="relative group">
@@ -496,7 +496,11 @@ const Ventas: React.FC = () => {
                                             <td className="px-6 py-4 text-sm text-slate-500">
                                                 {v.created_at ? format(new Date(v.created_at), 'dd/MM/yyyy HH:mm') : format(parseISO(v.fecha), 'dd/MM/yyyy')}
                                             </td>
-                                            <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-white">{v.cliente?.razon_social || 'N/A'}</td>
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-white max-w-[200px]">
+                                                <div className="truncate" title={v.cliente?.razon_social}>
+                                                    {v.cliente?.razon_social || 'N/A'}
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 text-sm text-slate-500 font-medium">{v.vendedor ? `${v.vendedor.nombre} ${v.vendedor.apellido}` : 'Sistema'}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusColor(v.estado)}`}>
@@ -581,8 +585,8 @@ const Ventas: React.FC = () => {
 
             {/* Delivery Update Modal */}
             {showDeliveryModal && selectedVenta && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-zinc-900 w-full max-w-4xl max-h-[90vh] rounded-[40px] shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 lg:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 w-full max-w-4xl max-h-[95vh] lg:max-h-[90vh] rounded-[30px] lg:rounded-[40px] shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
                         {/* Modal Header */}
                         <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-start bg-slate-50/50 dark:bg-zinc-800/30">
                             <div>

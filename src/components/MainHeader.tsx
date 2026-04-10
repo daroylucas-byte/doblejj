@@ -7,8 +7,8 @@ interface MainHeaderProps {
 
 const MainHeader: React.FC<MainHeaderProps> = ({ title, children }) => {
     return (
-        <header className="h-16 border-b border-slate-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur flex items-center justify-between px-8 sticky top-0 z-10 w-full">
-            <h2 className="text-xl font-bold">{title}</h2>
+        <header className="min-h-[4rem] border-b border-slate-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur flex items-center justify-between px-4 sm:px-8 py-3 sticky top-0 z-10 w-full flex-wrap gap-4">
+            <h2 className="text-lg sm:text-xl font-bold truncate max-w-[200px] sm:max-w-none">{title}</h2>
             <div className="flex items-center gap-4">
                 {children ? children : (
                     <>

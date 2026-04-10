@@ -221,26 +221,26 @@ const Dashboard: React.FC = () => {
     return (
         <Layout>
             <MainHeader title="Dashboard General">
-                <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-1.5 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm">
-                    <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100 dark:border-zinc-800">
-                        <span className="material-symbols-outlined text-slate-400 text-sm">calendar_month</span>
+                <div className="flex flex-wrap items-center gap-2 bg-white dark:bg-zinc-900 p-1.5 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm w-full sm:w-auto">
+                    <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100 dark:border-zinc-800 flex-1 sm:flex-initial">
+                        <span className="material-symbols-outlined text-slate-400 text-sm flex-shrink-0">calendar_month</span>
                         <input 
                             type="date" 
-                            className="bg-transparent border-none p-0 text-[11px] font-black uppercase tracking-widest text-slate-600 dark:text-zinc-400 focus:ring-0 cursor-pointer"
+                            className="bg-transparent border-none p-0 text-[11px] font-black uppercase tracking-widest text-slate-600 dark:text-zinc-400 focus:ring-0 cursor-pointer w-full"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
                         />
                     </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5">
+                    <div className="flex items-center gap-2 px-3 py-1.5 flex-1 sm:flex-initial justify-between">
                         <input 
                             type="date" 
-                            className="bg-transparent border-none p-0 text-[11px] font-black uppercase tracking-widest text-slate-600 dark:text-zinc-400 focus:ring-0 cursor-pointer"
+                            className="bg-transparent border-none p-0 text-[11px] font-black uppercase tracking-widest text-slate-600 dark:text-zinc-400 focus:ring-0 cursor-pointer w-full"
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
                         />
                         <button 
                             onClick={fetchDashboardData}
-                            className="size-6 flex items-center justify-center bg-primary/10 text-primary rounded-lg hover:bg-primary hover:text-white transition-all"
+                            className="size-6 flex-shrink-0 flex items-center justify-center bg-primary/10 text-primary rounded-lg hover:bg-primary hover:text-white transition-all ml-2"
                         >
                             <span className="material-symbols-outlined text-sm">refresh</span>
                         </button>
@@ -254,18 +254,18 @@ const Dashboard: React.FC = () => {
                     <p className="text-slate-500 font-bold uppercase tracking-widest text-sm">Cargando métricas...</p>
                 </div>
             ) : (
-                <div className="p-8 space-y-8 flex-1">
+                <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 flex-1">
                     {/* Primary Summary Card */}
                     <div className="bg-gradient-to-br from-primary to-primary-dark p-1 rounded-3xl shadow-2xl shadow-primary/20">
-                        <div className="bg-white dark:bg-zinc-950 p-8 rounded-[22px] flex flex-col md:flex-row items-center justify-between gap-8">
-                            <div className="flex-1">
+                        <div className="bg-white dark:bg-zinc-950 p-4 sm:p-8 rounded-[22px] flex flex-col lg:flex-row items-center lg:items-start justify-between gap-6 sm:gap-8">
+                            <div className="flex-1 w-full text-center lg:text-left">
                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-2">Resumen del Período</p>
-                                <h2 className="text-3xl font-black uppercase tracking-tighter text-slate-900 dark:text-white">
+                                <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter text-slate-900 dark:text-white">
                                     {format(parseISO(startDate), 'dd MMM', { locale: es })} - {format(parseISO(endDate), 'dd MMM', { locale: es })}
                                 </h2>
                             </div>
                             
-                            <div className="flex flex-wrap justify-center md:justify-end gap-12 w-full md:w-auto">
+                            <div className="flex flex-wrap justify-center lg:justify-end gap-x-6 sm:gap-x-12 gap-y-4 w-full lg:w-auto">
                                 <div className="text-center md:text-right">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total Ventas</p>
                                     <p className="text-2xl font-black text-emerald-500">{formatCurrency(ventasPeriodo)}</p>
@@ -310,7 +310,7 @@ const Dashboard: React.FC = () => {
                             <h3 className="text-2xl font-bold mt-1 text-amber-600 uppercase tracking-tighter">{formatCurrency(cobrosPendientes)}</h3>
                         </div>
 
-                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-transform hover:scale-[1.02]">
+                        <div className="bg-white dark:bg-zinc-900 p-5 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-transform hover:scale-[1.02]">
                             <div className="flex justify-between items-start mb-4">
                                 <div className="p-2 bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-lg">
                                     <span className="material-symbols-outlined">priority_high</span>
@@ -319,8 +319,8 @@ const Dashboard: React.FC = () => {
                                     <span className="px-2 py-1 bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400 text-[10px] rounded-full font-bold uppercase tracking-wider">Crítico</span>
                                 )}
                             </div>
-                            <p className="text-slate-500 dark:text-zinc-400 text-sm font-medium">Stock Bajo Mínimo</p>
-                            <h3 className="text-2xl font-bold mt-1 uppercase tracking-tighter">{stockBajoMinimo} <span className="text-xs text-slate-400 font-medium">Productos</span></h3>
+                            <p className="text-slate-500 dark:text-zinc-400 text-xs sm:text-sm font-medium">Stock Bajo Mínimo</p>
+                            <h3 className="text-xl sm:text-2xl font-bold mt-1 uppercase tracking-tighter">{stockBajoMinimo} <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Productos</span></h3>
                         </div>
 
                         <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-transform hover:scale-[1.02]">
@@ -349,36 +349,38 @@ const Dashboard: React.FC = () => {
                                 </div>
                             </div>
                             
-                            <div className="h-64 flex items-end justify-between gap-4 py-2 border-b border-slate-100 dark:border-zinc-800 relative">
-                                <div className="absolute top-0 left-0 w-full h-px bg-slate-100 dark:bg-zinc-800"></div>
-                                <div className="absolute top-1/2 left-0 w-full h-px bg-slate-50 dark:bg-zinc-800/50"></div>
+                            <div className="overflow-x-auto no-scrollbar -mx-2 px-2">
+                                <div className="h-64 min-w-[500px] flex items-end justify-between gap-4 py-2 border-b border-slate-100 dark:border-zinc-800 relative">
+                                    <div className="absolute top-0 left-0 w-full h-px bg-slate-100 dark:bg-zinc-800"></div>
+                                    <div className="absolute top-1/2 left-0 w-full h-px bg-slate-50 dark:bg-zinc-800/50"></div>
 
-                                {weeklyData.map((day, idx) => (
-                                    <div key={idx} className="flex-1 flex flex-col items-center group relative h-full justify-end">
-                                        <div className="flex items-end gap-1 w-full h-full pb-1">
-                                            <div 
-                                                className="flex-1 bg-primary rounded-t-sm transition-all duration-500 hover:brightness-110" 
-                                                style={{ height: `${(day.ventas / maxChartValue) * 100}%` }}
-                                            ></div>
-                                            <div 
-                                                className="flex-1 bg-slate-300 dark:bg-zinc-700 rounded-t-sm transition-all duration-500" 
-                                                style={{ height: `${(day.compras / maxChartValue) * 100}%` }}
-                                            ></div>
-                                            <div 
-                                                className="flex-1 border-x-2 border-t-2 border-primary/40 rounded-t-sm transition-all duration-500" 
-                                                style={{ height: `${(day.gastos / maxChartValue) * 100}%` }}
-                                            ></div>
+                                    {weeklyData.map((day, idx) => (
+                                        <div key={idx} className="flex-1 flex flex-col items-center group relative h-full justify-end">
+                                            <div className="flex items-end gap-1 w-full h-full pb-1">
+                                                <div 
+                                                    className="flex-1 bg-primary rounded-t-sm transition-all duration-500 hover:brightness-110" 
+                                                    style={{ height: `${(day.ventas / maxChartValue) * 100}%` }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 bg-slate-300 dark:bg-zinc-700 rounded-t-sm transition-all duration-500" 
+                                                    style={{ height: `${(day.compras / maxChartValue) * 100}%` }}
+                                                ></div>
+                                                <div 
+                                                    className="flex-1 border-x-2 border-t-2 border-primary/40 rounded-t-sm transition-all duration-500" 
+                                                    style={{ height: `${(day.gastos / maxChartValue) * 100}%` }}
+                                                ></div>
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase text-slate-400 mt-2">{day.dayName}</span>
+                                            
+                                            <div className="absolute bottom-full mb-2 bg-zinc-900 text-white p-2 rounded text-[10px] opacity-0 group-hover:opacity-100 lg:group-hover:opacity-100 transition-opacity z-50 pointer-events-none whitespace-nowrap shadow-xl">
+                                                <p className="font-black border-b border-zinc-700 mb-1 pb-1">{day.dayName.toUpperCase()}</p>
+                                                <p className="flex justify-between gap-4">Ventas: <span className="font-bold text-primary">{formatCurrency(day.ventas)}</span></p>
+                                                <p className="flex justify-between gap-4">Compras: <span className="font-bold">{formatCurrency(day.compras)}</span></p>
+                                                <p className="flex justify-between gap-4">Gastos: <span className="font-bold">{formatCurrency(day.gastos)}</span></p>
+                                            </div>
                                         </div>
-                                        <span className="text-[10px] font-black uppercase text-slate-400 mt-2">{day.dayName}</span>
-                                        
-                                        <div className="absolute bottom-full mb-2 bg-zinc-900 text-white p-2 rounded text-[10px] opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none whitespace-nowrap shadow-xl">
-                                            <p className="font-black border-b border-zinc-700 mb-1 pb-1">{day.dayName.toUpperCase()}</p>
-                                            <p className="flex justify-between gap-4">Ventas: <span className="font-bold text-primary">{formatCurrency(day.ventas)}</span></p>
-                                            <p className="flex justify-between gap-4">Compras: <span className="font-bold">{formatCurrency(day.compras)}</span></p>
-                                            <p className="flex justify-between gap-4">Gastos: <span className="font-bold">{formatCurrency(day.gastos)}</span></p>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         </div>
 

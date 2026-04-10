@@ -204,8 +204,8 @@ const Elaboracion: React.FC = () => {
         <Layout>
             <MainHeader title="Elaboración de Productos" />
 
-            <div className="p-4 lg:p-6 space-y-6 pb-24">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="p-4 lg:p-8 max-w-[1600px] mx-auto w-full space-y-4 lg:space-y-6 pb-24 lg:pb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
                     {/* Panel de Insumos */}
                     <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-sm border border-slate-200 dark:border-zinc-800 flex flex-col overflow-hidden">
                         <div className="p-4 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30">
@@ -429,23 +429,22 @@ const Elaboracion: React.FC = () => {
                         <table className="w-full text-left text-sm">
                             <thead>
                                 <tr className="text-slate-500 border-b border-slate-100 dark:border-zinc-800">
-                                    <th className="px-6 py-4 font-medium">Fecha / Motivo</th>
-                                    <th className="px-6 py-4 font-medium">Producto</th>
-                                    <th className="px-6 py-4 font-medium text-center">Tipo</th>
-                                    <th className="px-6 py-4 font-medium text-right">Cantidad</th>
-                                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap">Stock Nuevo</th>
+                                    <th className="px-4 md:px-6 py-4 font-medium">Motivo / Producto</th>
+                                    <th className="px-6 py-4 font-medium hidden sm:table-cell text-center">Tipo</th>
+                                    <th className="px-4 md:px-6 py-4 font-medium text-right">Cantidad</th>
+                                    <th className="px-6 py-4 font-medium text-right hidden sm:table-cell whitespace-nowrap">Stock Nuevo</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50 dark:divide-zinc-800/50">
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                                        <td colSpan={5} className="px-4 md:px-6 py-8 text-center text-slate-400">
                                             Cargando historial...
                                         </td>
                                     </tr>
                                 ) : history.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
+                                        <td colSpan={5} className="px-4 md:px-6 py-8 text-center text-slate-400">
                                             No hay movimientos de elaboración registrados todavía.
                                         </td>
                                     </tr>
@@ -454,13 +453,22 @@ const Elaboracion: React.FC = () => {
                                         const isEntrada = mov.tipo === 'entrada';
                                         return (
                                             <tr key={mov.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/30 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <p className="font-medium text-slate-800 dark:text-zinc-200 line-clamp-1">{mov.motivo}</p>
+                                                <td className="px-4 md:px-6 py-4">
+                                                    <p className="font-medium text-slate-800 dark:text-zinc-200 line-clamp-1 text-xs md:text-sm">{mov.motivo}</p>
+                                                    <p className="font-semibold text-slate-700 dark:text-zinc-300 text-xs md:text-sm mt-1">
+                                                        {mov.productos?.nombre || 'Producto Desconocido'}
+                                                    </p>
+                                                    <div className="flex sm:hidden items-center mt-2 gap-2">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isEntrada 
+                                                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                                                            : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                                                        }`}>
+                                                            {isEntrada ? 'Resultado' : 'Insumo'}
+                                                        </span>
+                                                        <span className="text-xs text-slate-500">Stock: {mov.stock_nuevo}</span>
+                                                    </div>
                                                 </td>
-                                                <td className="px-6 py-4 font-semibold text-slate-700 dark:text-zinc-300">
-                                                    {mov.productos?.nombre || 'Producto Desconocido'}
-                                                </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-6 py-4 hidden sm:table-cell">
                                                     <div className="flex justify-center">
                                                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${isEntrada 
                                                             ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
@@ -470,10 +478,10 @@ const Elaboracion: React.FC = () => {
                                                         </span>
                                                     </div>
                                                 </td>
-                                                <td className={`px-6 py-4 text-right font-bold ${isEntrada ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                                <td className={`px-4 md:px-6 py-4 text-right font-bold ${isEntrada ? 'text-emerald-600' : 'text-orange-600'}`}>
                                                     {isEntrada ? '+' : '-'}{mov.cantidad}
                                                 </td>
-                                                <td className="px-6 py-4 text-right font-medium text-slate-500">
+                                                <td className="px-6 py-4 text-right font-medium text-slate-500 hidden sm:table-cell">
                                                     {mov.stock_nuevo}
                                                 </td>
                                             </tr>

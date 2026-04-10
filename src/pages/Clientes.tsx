@@ -87,9 +87,9 @@ const Clientes: React.FC = () => {
                 </button>
             </MainHeader>
 
-            <div className="p-8 space-y-8 max-w-[1400px] mx-auto w-full">
+            <div className="p-4 sm:p-8 space-y-4 sm:space-y-8 max-w-[1400px] mx-auto w-full">
                 {/* Filters Section */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-white dark:bg-zinc-900 p-6 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-all duration-300">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end bg-white dark:bg-zinc-900 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm transition-all duration-300">
                     <div className="md:col-span-2 space-y-2">
                         <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Búsqueda Rápida</label>
                         <div className="relative group">
@@ -131,12 +131,12 @@ const Clientes: React.FC = () => {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
-                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Identificación / Razón Social</th>
-                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">CUIT / DNI</th>
-                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Tipo</th>
-                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider">Contacto</th>
-                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider text-right">Saldo Actual</th>
-                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider text-center">Acciones</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] sm:text-xs font-bold uppercase text-slate-500 tracking-wider">Identificación</th>
+                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider hidden md:table-cell">CUIT / DNI</th>
+                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider hidden sm:table-cell">Tipo</th>
+                                    <th className="px-6 py-4 text-xs font-bold uppercase text-slate-500 tracking-wider hidden lg:table-cell">Contacto</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] sm:text-xs font-bold uppercase text-slate-500 tracking-wider text-right">Saldo Actual</th>
+                                    <th className="px-3 sm:px-6 py-4 text-[10px] sm:text-xs font-bold uppercase text-slate-500 tracking-wider text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
@@ -162,18 +162,18 @@ const Clientes: React.FC = () => {
                                             key={cliente.id}
                                             className={`group hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors ${!cliente.activo ? 'opacity-60 grayscale' : ''}`}
                                         >
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-4">
                                                 <Link to={`/clientes/${cliente.id}`} className="flex flex-col group/name">
-                                                    <span className="font-bold text-slate-900 dark:text-slate-100 group-hover/name:text-primary transition-colors underline-offset-4 decoration-primary/30 hover:underline">{cliente.razon_social}</span>
+                                                    <span className="font-bold text-sm text-slate-900 dark:text-slate-100 group-hover/name:text-primary transition-colors underline-offset-4 decoration-primary/30 hover:underline line-clamp-2">{cliente.razon_social}</span>
                                                     {cliente.nombre_fantasia && (
-                                                        <span className="text-xs text-slate-400 italic">"{cliente.nombre_fantasia}"</span>
+                                                        <span className="text-xs text-slate-400 italic line-clamp-1">"{cliente.nombre_fantasia}"</span>
                                                     )}
                                                 </Link>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-500 text-sm font-mono">
+                                            <td className="px-6 py-4 text-slate-500 text-sm font-mono hidden md:table-cell">
                                                 {cliente.cuit || cliente.dni || '-'}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 hidden sm:table-cell">
                                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${cliente.tipo === 'mayorista'
                                                     ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
                                                     : cliente.tipo === 'revendedor'
@@ -183,7 +183,7 @@ const Clientes: React.FC = () => {
                                                     {cliente.tipo}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-6 py-4 hidden lg:table-cell">
                                                 <div className="flex flex-col text-xs text-slate-500 gap-0.5">
                                                     <div className="flex items-center gap-1.5 font-medium">
                                                         <span className="material-symbols-outlined text-sm">call</span>
@@ -191,37 +191,37 @@ const Clientes: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
                                                         <span className="material-symbols-outlined text-sm">mail</span>
-                                                        {cliente.email || '-'}
+                                                        <span className="truncate max-w-[150px]">{cliente.email || '-'}</span>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className={`px-6 py-4 text-right font-black ${cliente.saldo_actual > 0 ? 'text-rose-600' : cliente.saldo_actual < 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                $ {Math.abs(cliente.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                                {cliente.saldo_actual > 0 && <span className="block text-[10px] font-bold uppercase tracking-widest opacity-70">Deuda</span>}
-                                                {cliente.saldo_actual < 0 && <span className="block text-[10px] font-bold uppercase tracking-widest opacity-70">A Favor</span>}
+                                            <td className={`px-3 sm:px-6 py-4 text-right font-black whitespace-nowrap ${cliente.saldo_actual > 0 ? 'text-rose-600' : cliente.saldo_actual < 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                <span className="text-sm">$ {Math.abs(cliente.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                                                {cliente.saldo_actual > 0 && <span className="block text-[9px] sm:text-[10px] font-bold uppercase tracking-widest opacity-70">Deuda</span>}
+                                                {cliente.saldo_actual < 0 && <span className="block text-[9px] sm:text-[10px] font-bold uppercase tracking-widest opacity-70">A Favor</span>}
                                             </td>
-                                            <td className="px-6 py-4 text-center">
-                                                <div className="flex items-center justify-center gap-1">
+                                            <td className="px-3 sm:px-6 py-4 text-center">
+                                                <div className="flex items-center justify-center gap-0.5 sm:gap-1">
                                                     <Link
                                                         to={`/clientes/${cliente.id}`}
-                                                        className="p-2 text-slate-400 hover:text-primary transition-all hover:bg-primary/10 rounded-lg group"
-                                                        title="Ver Detalle / Cuenta Corriente"
+                                                        className="p-1 sm:p-2 text-slate-400 hover:text-primary transition-all hover:bg-primary/10 rounded-lg group"
+                                                        title="Ver Detalle"
                                                     >
-                                                        <span className="material-symbols-outlined group-hover:scale-110 transition-transform">visibility</span>
+                                                        <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-110 transition-transform">visibility</span>
                                                     </Link>
                                                     <button
                                                         onClick={(e) => { e.preventDefault(); handleEdit(cliente); }}
-                                                        className="p-2 text-slate-400 hover:text-amber-500 transition-all hover:bg-amber-500/10 rounded-lg group"
+                                                        className="p-1 sm:p-2 text-slate-400 hover:text-amber-500 transition-all hover:bg-amber-500/10 rounded-lg group"
                                                         title="Editar Datos"
                                                     >
-                                                        <span className="material-symbols-outlined group-hover:scale-110 transition-transform">edit_square</span>
+                                                        <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-110 transition-transform">edit_square</span>
                                                     </button>
                                                     <button
                                                         onClick={(e) => { e.preventDefault(); handleCobro(cliente); }}
-                                                        className="p-2 text-emerald-500 hover:text-emerald-600 transition-all hover:bg-emerald-500/10 rounded-lg group"
+                                                        className="p-1 sm:p-2 text-emerald-500 hover:text-emerald-600 transition-all hover:bg-emerald-500/10 rounded-lg group"
                                                         title="Registrar Cobro"
                                                     >
-                                                        <span className="material-symbols-outlined group-hover:scale-125 transition-transform font-bold">payments</span>
+                                                        <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-125 transition-transform font-bold">payments</span>
                                                     </button>
                                                 </div>
                                             </td>
