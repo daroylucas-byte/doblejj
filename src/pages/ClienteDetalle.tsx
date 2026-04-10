@@ -4,6 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
+import { generateClientStatement } from '../utils/pdfGenerator';
 
 interface Cliente {
     id: string;
@@ -51,13 +52,29 @@ const ClienteDetalle: React.FC = () => {
     const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
     const [topProductos, setTopProductos] = useState<TopProducto[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isFiltering, setIsFiltering] = useState(false);
     const [activeTab, setActiveTab] = useState<'movimientos' | 'compras' | 'stats'>('movimientos');
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
+
+    // Ajuste de Saldo States
+    const [showAjusteModal, setShowAjusteModal] = useState(false);
+    const [nuevoSaldoReal, setNuevoSaldoReal] = useState<string>('');
+    const [conceptoAjuste, setConceptoAjuste] = useState('Saldo Anterior');
+    const [procesandoAjuste, setProcesandoAjuste] = useState(false);
 
     const fetchData = useCallback(async () => {
         if (!id) return;
-        setLoading(true);
+        
+        // Only show global spinner if it's the initial load
+        if (!cliente) {
+            setLoading(true);
+        } else {
+            setIsFiltering(true);
+        }
+
         try {
-            // 1. Fetch Cliente Data
+            // 1. Fetch Cliente Data (Historical indicator, not affected by date filter)
             const { data: clienteData, error: clienteErr } = await supabase
                 .from('clientes')
                 .select('*')
@@ -66,33 +83,45 @@ const ClienteDetalle: React.FC = () => {
             if (clienteErr) throw clienteErr;
             setCliente(clienteData);
 
-            // 2. Fetch Purchase History
-            const { data: ventasData } = await supabase
+            // 2. Fetch Purchase History (Filtered)
+            let ventasQuery = supabase
                 .from('ventas')
                 .select('id, numero, fecha, total, estado')
-                .eq('cliente_id', id)
-                .order('fecha', { ascending: false });
+                .eq('cliente_id', id);
+
+            if (startDate) ventasQuery = ventasQuery.gte('fecha', startDate);
+            if (endDate) ventasQuery = ventasQuery.lte('fecha', endDate);
+
+            const { data: ventasData } = await ventasQuery.order('fecha', { ascending: false });
             setVentas(ventasData || []);
 
-            // 3. Fetch Current Account Movements
-            const { data: movsData } = await supabase
+            // 3. Fetch Current Account Movements (Filtered)
+            let movsQuery = supabase
                 .from('cuenta_corriente')
                 .select('id, fecha, tipo, concepto, monto, saldo_acumulado')
-                .eq('cliente_id', id)
-                .order('created_at', { ascending: false });
+                .eq('cliente_id', id);
+
+            if (startDate) movsQuery = movsQuery.gte('fecha', startDate);
+            if (endDate) movsQuery = movsQuery.lte('fecha', endDate);
+
+            const { data: movsData } = await movsQuery.order('created_at', { ascending: false });
             setMovimientos(movsData || []);
 
-            // 4. Fetch Stats (Top Products)
-            // We join ventas -> venta_items -> productos
-            const { data: statsData } = await supabase
+            // 4. Fetch Stats (Top Products) - Filtered by date
+            let statsQuery = supabase
                 .from('venta_items')
                 .select(`
                     cantidad,
                     subtotal,
                     productos:producto_id (nombre),
-                    ventas!inner (cliente_id)
+                    ventas!inner (cliente_id, fecha)
                 `)
                 .eq('ventas.cliente_id', id);
+
+            if (startDate) statsQuery = statsQuery.gte('ventas.fecha', startDate);
+            if (endDate) statsQuery = statsQuery.lte('ventas.fecha', endDate);
+
+            const { data: statsData } = await statsQuery;
 
             if (statsData) {
                 const aggregation: Record<string, { q: number; v: number }> = {};
@@ -119,8 +148,57 @@ const ClienteDetalle: React.FC = () => {
             console.error('Error fetching client details:', error);
         } finally {
             setLoading(false);
+            setIsFiltering(false);
         }
-    }, [id]);
+    }, [id, startDate, endDate]);
+
+    const handleAjusteSaldo = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!cliente || !id || nuevoSaldoReal === '') return;
+
+        setProcesandoAjuste(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const targetSaldo = Number(nuevoSaldoReal);
+            const currentSaldo = Number(cliente.saldo_actual);
+            const delta = targetSaldo - currentSaldo;
+
+            if (delta === 0) {
+                setShowAjusteModal(false);
+                return;
+            }
+
+            // Determinar tipo de movimiento
+            // delta > 0 significa que el saldo subió (de -1000 a -500 o de 0 a 500) -> Pago/Haber
+            // delta < 0 significa que el saldo bajó (de -1000 a -1500) -> Cargo/Debe
+            const tipo: 'cargo' | 'pago' = delta > 0 ? 'pago' : 'cargo';
+            const monto = Math.abs(delta);
+
+            const { error: insertErr } = await supabase
+                .from('cuenta_corriente')
+                .insert([{
+                    cliente_id: id,
+                    fecha: new Date().toISOString().split('T')[0],
+                    tipo,
+                    concepto: conceptoAjuste || 'Saldo Anterior',
+                    monto,
+                    saldo_acumulado: targetSaldo,
+                    usuario_id: user?.id
+                }]);
+
+            if (insertErr) throw insertErr;
+
+            setShowAjusteModal(false);
+            setNuevoSaldoReal('');
+            setConceptoAjuste('Saldo Anterior');
+            fetchData(); // Recargar datos
+        } catch (error) {
+            console.error('Error al ajustar saldo:', error);
+            alert('Error al procesar el ajuste de saldo');
+        } finally {
+            setProcesandoAjuste(false);
+        }
+    };
 
     useEffect(() => {
         fetchData();
@@ -217,7 +295,19 @@ const ClienteDetalle: React.FC = () => {
                         {/* Indicators Top Bar */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Saldo Actual</p>
+                                <div className="flex items-center justify-between mb-1">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo Actual</p>
+                                    <button 
+                                        onClick={() => {
+                                            setNuevoSaldoReal(cliente.saldo_actual.toString());
+                                            setShowAjusteModal(true);
+                                        }}
+                                        className="text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
+                                        title="Ajustar Saldo Manualmente"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">edit</span>
+                                    </button>
+                                </div>
                                 <p className={`text-2xl font-black ${cliente.saldo_actual < 0 ? 'text-red-500' : 'text-green-500'}`}>
                                     $ {Math.abs(cliente.saldo_actual).toLocaleString()}
                                 </p>
@@ -246,6 +336,51 @@ const ClienteDetalle: React.FC = () => {
 
                         {/* Tabs Container */}
                         <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                            {/* Filter Bar */}
+                            <div className="p-4 border-b border-slate-100 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-4 bg-slate-50/30 dark:bg-zinc-800/20">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-slate-400 text-sm">calendar_month</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Filtrar por Período</span>
+                                    </div>
+                                    {isFiltering && (
+                                        <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full">
+                                            <div className="size-2 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                                            <span className="text-[9px] font-black uppercase tracking-tighter text-primary animate-pulse">Actualizando datos...</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase">Inicio</label>
+                                        <input 
+                                            type="date" 
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 outline-none focus:border-primary transition-all"
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase">Fin</label>
+                                        <input 
+                                            type="date" 
+                                            value={endDate}
+                                            onChange={(e) => setEndDate(e.target.value)}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 outline-none focus:border-primary transition-all"
+                                        />
+                                    </div>
+                                    {(startDate || endDate) && (
+                                        <button 
+                                            onClick={() => { setStartDate(''); setEndDate(''); }}
+                                            className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                                            title="Limpiar filtros"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">close</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
                             {/* Tabs Switcher */}
                             <div className="flex border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/10">
                                 <button
@@ -275,7 +410,12 @@ const ClienteDetalle: React.FC = () => {
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between mb-4">
                                             <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">Movimientos Recientes</h4>
-                                            <button className="h-8 px-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md shadow-primary/20 hover:scale-95 transition-all">Exportar PDF</button>
+                                            <button 
+                                                onClick={() => generateClientStatement(cliente, movimientos, startDate, endDate)}
+                                                className="h-8 px-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md shadow-primary/20 hover:scale-95 transition-all"
+                                            >
+                                                Exportar PDF
+                                            </button>
                                         </div>
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-left border-collapse">
@@ -284,31 +424,40 @@ const ClienteDetalle: React.FC = () => {
                                                         <th className="py-3">Fecha</th>
                                                         <th className="py-3">Concepto</th>
                                                         <th className="py-3">Tipo</th>
-                                                        <th className="py-3 text-right">Monto</th>
+                                                        <th className="py-3 text-right">Debe</th>
+                                                        <th className="py-3 text-right">Haber</th>
                                                         <th className="py-3 text-right">Saldo</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
-                                                    {movimientos.map(m => (
-                                                        <tr key={m.id} className="text-sm">
-                                                            <td className="py-3 text-slate-500">{format(parseISO(m.fecha), 'dd/MM/yyyy')}</td>
-                                                            <td className="py-3 font-bold">{m.concepto}</td>
-                                                            <td className="py-3 capitalize">
-                                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${m.tipo === 'pago' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                                    {m.tipo.replace('_', ' ')}
-                                                                </span>
-                                                            </td>
-                                                            <td className={`py-3 text-right font-black ${m.tipo === 'pago' ? 'text-green-600' : 'text-slate-900 dark:text-white'}`}>
-                                                                $ {m.monto.toLocaleString()}
-                                                            </td>
-                                                            <td className="py-3 text-right font-black text-primary/80">
-                                                                $ {m.saldo_acumulado.toLocaleString()}
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {movimientos.map(m => {
+                                                        const isDebe = m.tipo === 'cargo' || m.tipo === 'nota_debito';
+                                                        const isHaber = m.tipo === 'pago' || m.tipo === 'nota_credito';
+                                                        
+                                                        return (
+                                                            <tr key={m.id} className="text-sm group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10 transition-colors">
+                                                                <td className="py-3 text-slate-500">{format(parseISO(m.fecha), 'dd/MM/yyyy')}</td>
+                                                                <td className="py-3 font-bold text-slate-700 dark:text-zinc-200">{m.concepto}</td>
+                                                                <td className="py-3 capitalize">
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${isHaber ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                        {m.tipo.replace('_', ' ')}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-3 text-right font-black text-slate-900 dark:text-white">
+                                                                    {isDebe ? `$ ${m.monto.toLocaleString()}` : '-'}
+                                                                </td>
+                                                                <td className="py-3 text-right font-black text-green-600">
+                                                                    {isHaber ? `$ ${m.monto.toLocaleString()}` : '-'}
+                                                                </td>
+                                                                <td className={`py-3 text-right font-black ${m.saldo_acumulado < 0 ? 'text-red-500' : 'text-primary'}`}>
+                                                                    $ {Math.abs(m.saldo_acumulado).toLocaleString()}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                     {movimientos.length === 0 && (
                                                         <tr>
-                                                            <td colSpan={5} className="py-12 text-center text-slate-400 font-bold italic">No hay movimientos registrados</td>
+                                                            <td colSpan={6} className="py-12 text-center text-slate-400 font-bold italic">No hay movimientos registrados</td>
                                                         </tr>
                                                     )}
                                                 </tbody>
@@ -385,6 +534,98 @@ const ClienteDetalle: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Ajuste de Saldo Modal */}
+            {showAjusteModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between bg-slate-50/50 dark:bg-zinc-800/10">
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Ajustar Saldo</h3>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Corrección manual de cuenta</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowAjusteModal(false)}
+                                className="size-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-400 transition-colors"
+                            >
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleAjusteSaldo} className="p-6 space-y-6">
+                            <div className="bg-primary/5 rounded-xl p-4 border border-primary/10">
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo Actual en Sistema</span>
+                                    <span className={`text-xs font-black ${cliente.saldo_actual < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                        $ {cliente.saldo_actual.toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nuevo Saldo Real</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                        <input 
+                                            autoFocus
+                                            type="number"
+                                            step="0.01"
+                                            value={nuevoSaldoReal}
+                                            onChange={(e) => setNuevoSaldoReal(e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full pl-8 pr-4 py-3 rounded-xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-lg font-black outline-none focus:border-primary transition-all"
+                                            required
+                                        />
+                                    </div>
+                                    <p className="text-[9px] text-slate-400 font-bold italic ml-1">
+                                        * Ingresa el monto final que el cliente debería tener (usa "-" para deuda).
+                                    </p>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Concepto del Ajuste</label>
+                                    <input 
+                                        type="text"
+                                        value={conceptoAjuste}
+                                        onChange={(e) => setConceptoAjuste(e.target.value)}
+                                        placeholder="Ej: Saldo Anterior, Corrección, etc."
+                                        className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-sm font-bold outline-none focus:border-primary transition-all"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-2 flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAjusteModal(false)}
+                                    className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={procesandoAjuste || nuevoSaldoReal === ''}
+                                    className="flex-[2] py-3 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-primary/20 hover:scale-[0.98] active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {procesandoAjuste ? (
+                                        <>
+                                            <div className="size-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                                            <span>Procesando...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="material-symbols-outlined text-base">check_circle</span>
+                                            <span>Confirmar Ajuste</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </Layout>
     );
 };

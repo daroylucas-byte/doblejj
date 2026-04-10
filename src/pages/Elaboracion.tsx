@@ -12,7 +12,7 @@ interface Producto {
 }
 
 interface InsumoItem extends Producto {
-    cantidad: number;
+    cantidad: string;
 }
 
 const Elaboracion: React.FC = () => {
@@ -31,7 +31,7 @@ const Elaboracion: React.FC = () => {
 
     // Resultado State
     const [productoResultado, setProductoResultado] = useState<Producto | null>(null);
-    const [cantidadResultado, setCantidadResultado] = useState<number>(0);
+    const [cantidadResultado, setCantidadResultado] = useState<string>('');
     const [searchResultado, setSearchResultado] = useState('');
     const [filteredResultados, setFilteredResultados] = useState<Producto[]>([]);
     const [resultadoDropdown, setResultadoDropdown] = useState(false);
@@ -110,19 +110,19 @@ const Elaboracion: React.FC = () => {
         const existing = insumos.find(item => item.id === prod.id);
         if (existing) {
             setInsumos(insumos.map(item =>
-                item.id === prod.id ? { ...item, cantidad: item.cantidad + 1 } : item
+                item.id === prod.id ? { ...item, cantidad: (parseFloat(item.cantidad) + 1).toString() } : item
             ));
         } else {
-            setInsumos([...insumos, { ...prod, cantidad: 1 }]);
+            setInsumos([...insumos, { ...prod, cantidad: "1" }]);
         }
         setSearchInsumo('');
         setInsumoDropdown(false);
     };
 
     const updateInsumoQuantity = (id: string, value: string) => {
-        const newQty = parseFloat(value);
-        if (isNaN(newQty)) return;
-        setInsumos(insumos.map(item => item.id === id ? { ...item, cantidad: newQty } : item));
+        // Permitir solo números y puntos decimales
+        const cleanValue = value.replace(/[^0-9.]/g, '');
+        setInsumos(insumos.map(item => item.id === id ? { ...item, cantidad: cleanValue } : item));
     };
 
     const removeInsumo = (id: string) => {
@@ -136,7 +136,9 @@ const Elaboracion: React.FC = () => {
     };
 
     const handleConfirm = async () => {
-        if (insumos.length === 0 || !productoResultado || cantidadResultado <= 0) {
+        const cantResNum = parseFloat(cantidadResultado);
+        
+        if (insumos.length === 0 || !productoResultado || isNaN(cantResNum) || cantResNum <= 0) {
             alert('Debe seleccionar al menos un insumo y un producto de salida con cantidad mayor a cero.');
             return;
         }
@@ -150,13 +152,16 @@ const Elaboracion: React.FC = () => {
 
             // Process Insumos (Salidas)
             for (const item of insumos) {
+                const cantNum = parseFloat(item.cantidad);
+                if (isNaN(cantNum) || cantNum <= 0) continue;
+
                 const stockAnterior = item.stock_actual;
-                const stockNuevo = stockAnterior - item.cantidad;
+                const stockNuevo = stockAnterior - cantNum;
 
                 const { error } = await supabase.from('movimientos_stock').insert({
                     producto_id: item.id,
                     tipo: 'salida',
-                    cantidad: item.cantidad,
+                    cantidad: cantNum,
                     stock_anterior: stockAnterior,
                     stock_nuevo: stockNuevo,
                     motivo: motivo,
@@ -168,12 +173,12 @@ const Elaboracion: React.FC = () => {
 
             // Process Resultado (Entrada)
             const stockAnteriorRes = productoResultado.stock_actual;
-            const stockNuevoRes = stockAnteriorRes + cantidadResultado;
+            const stockNuevoRes = stockAnteriorRes + cantResNum;
 
             const { error: resError } = await supabase.from('movimientos_stock').insert({
                 producto_id: productoResultado.id,
                 tipo: 'entrada',
-                cantidad: cantidadResultado,
+                cantidad: cantResNum,
                 stock_anterior: stockAnteriorRes,
                 stock_nuevo: stockNuevoRes,
                 motivo: motivo,
@@ -185,7 +190,7 @@ const Elaboracion: React.FC = () => {
             alert('Elaboración procesada con éxito.');
             setInsumos([]);
             setProductoResultado(null);
-            setCantidadResultado(0);
+            setCantidadResultado('');
             fetchData();
         } catch (error) {
             console.error('Error processing elaboration:', error);
@@ -273,8 +278,8 @@ const Elaboracion: React.FC = () => {
                                                         <td className="py-3 px-2">
                                                             <div className="flex items-center justify-center">
                                                                 <input
-                                                                    type="number"
-                                                                    step="0.001"
+                                                                    type="text"
+                                                                    inputMode="decimal"
                                                                     className="w-24 px-2 py-1.5 bg-slate-50 dark:bg-zinc-800 border-none rounded-lg text-center font-bold focus:ring-2 focus:ring-primary/20 transition-all outline-none"
                                                                     value={item.cantidad}
                                                                     onChange={(e) => updateInsumoQuantity(item.id, e.target.value)}
@@ -369,12 +374,15 @@ const Elaboracion: React.FC = () => {
                                         </label>
                                         <div className="flex items-center gap-3">
                                             <input
-                                                type="number"
-                                                step="0.001"
+                                                type="text"
+                                                inputMode="decimal"
                                                 placeholder="0.000"
                                                 className="flex-1 px-4 py-3 bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-center text-xl font-black text-primary focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-                                                value={cantidadResultado || ''}
-                                                onChange={(e) => setCantidadResultado(parseFloat(e.target.value) || 0)}
+                                                value={cantidadResultado}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(/[^0-9.]/g, '');
+                                                    setCantidadResultado(val);
+                                                }}
                                             />
                                         </div>
                                     </div>
@@ -384,8 +392,8 @@ const Elaboracion: React.FC = () => {
                             <div className="pt-4">
                                 <button
                                     onClick={handleConfirm}
-                                    disabled={saving || insumos.length === 0 || !productoResultado || cantidadResultado <= 0}
-                                    className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${saving || insumos.length === 0 || !productoResultado || cantidadResultado <= 0
+                                    disabled={saving || insumos.length === 0 || !productoResultado || Number(cantidadResultado) <= 0}
+                                    className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all ${saving || insumos.length === 0 || !productoResultado || Number(cantidadResultado) <= 0
                                             ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                             : 'bg-primary text-white hover:bg-primary-dark active:scale-[0.98] shadow-primary/20'
                                         }`}

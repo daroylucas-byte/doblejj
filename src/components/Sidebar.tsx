@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { LAST_UPDATE } from '../version';
 
 const Sidebar: React.FC = () => {
     const { user, signOut } = useAuthStore();
@@ -101,7 +102,7 @@ const Sidebar: React.FC = () => {
                     <span>Proveedores</span>
                 </NavLink>
             </nav>
-            <div className="p-4 border-t border-slate-200 dark:border-zinc-800">
+            <div className="p-4 border-t border-slate-200 dark:border-zinc-800 space-y-3">
                 <div className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-zinc-800/50 rounded-xl">
                     <div className="size-10 rounded-full bg-slate-200 dark:bg-zinc-800 overflow-hidden ring-2 ring-primary/20">
                         <img
@@ -124,6 +125,15 @@ const Sidebar: React.FC = () => {
                     >
                         <span className="material-symbols-outlined text-xl">logout</span>
                     </button>
+                </div>
+                
+                <div className="px-2 flex items-center justify-between text-slate-400">
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                        <span className="material-symbols-outlined text-xs">history</span>
+                        <span className="text-[9px] font-bold uppercase tracking-widest truncate">
+                            Actualizado: {LAST_UPDATE}
+                        </span>
+                    </div>
                 </div>
             </div>
         </aside>

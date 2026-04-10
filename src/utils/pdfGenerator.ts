@@ -154,3 +154,127 @@ export const generateSaleTicket = (venta: Venta, items: VentaItem[], aclaracion?
         alert("Error al generar el ticket PDF. Revise la consola para más detalles.");
     }
 };
+
+export const generateClientStatement = (
+    cliente: { razon_social: string; cuit?: string; direccion?: string; localidad?: string }, 
+    movimientos: any[], 
+    fechaInicio?: string, 
+    fechaFin?: string
+) => {
+    try {
+        const doc = new jsPDF({
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 15;
+
+        // Logo
+        try {
+            doc.addImage('/logo_ticket.png', 'PNG', margin, 10, 30, 30);
+        } catch (e) {
+            console.warn("Logo not found", e);
+        }
+
+        // Company Info (Header Right)
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DOBLE JJ ABASTECIMIENTOS', pageWidth - margin, 15, { align: 'right' });
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Mayorista de Carnes', pageWidth - margin, 20, { align: 'right' });
+        doc.text('Dirección: Carlos Paz, Córdoba', pageWidth - margin, 24, { align: 'right' });
+        doc.text('Tel: 3541625537 / 3541625536', pageWidth - margin, 28, { align: 'right' });
+        
+        doc.line(margin, 42, pageWidth - margin, 42);
+
+        // Statement Title
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('RESUMEN DE CUENTA CORRIENTE', pageWidth / 2, 52, { align: 'center' });
+
+        // Period Info
+        if (fechaInicio || fechaFin) {
+            doc.setFontSize(9);
+            const periodo = `Período: ${fechaInicio ? format(parseISO(fechaInicio), 'dd/MM/yyyy') : 'Inicio'} al ${fechaFin ? format(parseISO(fechaFin), 'dd/MM/yyyy') : 'Hoy'}`;
+            doc.text(periodo, pageWidth / 2, 58, { align: 'center' });
+        }
+
+        // Client Info Box
+        doc.setFillColor(245, 245, 245);
+        doc.roundedRect(margin, 65, pageWidth - (margin * 2), 25, 2, 2, 'F');
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DATOS DEL CLIENTE', margin + 5, 71);
+        
+        doc.setFontSize(11);
+        doc.text(cliente.razon_social, margin + 5, 78);
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`CUIT: ${cliente.cuit || 'S/N'}`, margin + 5, 83);
+        doc.text(`Dirección: ${cliente.direccion || 'S/D'} ${cliente.localidad ? `- ${cliente.localidad}` : ''}`, pageWidth - margin - 5, 83, { align: 'right' });
+
+        // Table
+        const tableData = movimientos.map(m => {
+            const isDebe = m.tipo === 'cargo' || m.tipo === 'nota_debito';
+            const isHaber = m.tipo === 'pago' || m.tipo === 'nota_credito';
+            return [
+                format(parseISO(m.fecha), 'dd/MM/yyyy'),
+                m.concepto,
+                isDebe ? `$ ${m.monto.toLocaleString('es-AR')}` : '-',
+                isHaber ? `$ ${m.monto.toLocaleString('es-AR')}` : '-',
+                `$ ${m.saldo_acumulado.toLocaleString('es-AR')}`
+            ];
+        });
+
+        autoTable(doc, {
+            startY: 95,
+            head: [['Fecha', 'Concepto', 'Debe', 'Haber', 'Saldo']],
+            body: tableData,
+            theme: 'striped',
+            headStyles: { fillColor: [240, 100, 30], textColor: [255, 255, 255] }, // Match primary color approx
+            styles: { fontSize: 8, cellPadding: 3 },
+            columnStyles: {
+                0: { cellWidth: 20 },
+                1: { cellWidth: 'auto' },
+                2: { halign: 'right', cellWidth: 25 },
+                3: { halign: 'right', cellWidth: 25 },
+                4: { halign: 'right', cellWidth: 30, fontStyle: 'bold' }
+            }
+        });
+
+        const finalY = (doc as any).lastAutoTable.finalY + 10;
+        const currentBalance = movimientos.length > 0 ? movimientos[0].saldo_acumulado : 0;
+
+        // Final Summary
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('SALDO FINAL:', pageWidth - margin - 50, finalY);
+        doc.setTextColor(currentBalance < 0 ? 200 : 0, currentBalance < 0 ? 0 : 150, 0); // Red if debt, Green if favor
+        doc.text(`$ ${Math.abs(currentBalance).toLocaleString('es-AR')}`, pageWidth - margin, finalY, { align: 'right' });
+        
+        doc.setFontSize(9);
+        doc.setTextColor(100);
+        doc.text(currentBalance < 0 ? '(Saldo Deudor)' : '(Saldo a Favor)', pageWidth - margin, finalY + 5, { align: 'right' });
+
+        // Footer
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(150);
+        const reportDate = format(new Date(), "dd/MM/yyyy HH:mm'hs'");
+        doc.text(`Generado el: ${reportDate}`, margin, doc.internal.pageSize.height - 10);
+        doc.text(`Página 1`, pageWidth - margin, doc.internal.pageSize.height - 10, { align: 'right' });
+
+        // Open
+        const url = doc.output('bloburl');
+        window.open(url, '_blank');
+
+    } catch (error) {
+        console.error("Error generating Statement PDF:", error);
+        alert("Error al generar el PDF del resumen de cuenta.");
+    }
+};

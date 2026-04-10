@@ -46,6 +46,8 @@ interface TopProducto {
     id: string;
     nombre: string;
     cantidad: number;
+    categoria: string;
+    unidad_medida: string;
 }
 
 const Dashboard: React.FC = () => {
@@ -148,7 +150,11 @@ const Dashboard: React.FC = () => {
                 .from('venta_items')
                 .select(`
                     cantidad, producto_id, 
-                    productos(nombre),
+                    productos(
+                        nombre, 
+                        unidad_medida,
+                        categorias(nombre)
+                    ),
                     ventas!inner(fecha, estado)
                 `)
                 .gte('ventas.fecha', startDate)
@@ -157,11 +163,17 @@ const Dashboard: React.FC = () => {
                 .limit(2000);
 
             if (itemsv) {
-                const agg: Record<string, { id: string, nombre: string, cantidad: number }> = {};
+                const agg: Record<string, TopProducto> = {};
                 itemsv.forEach((item: any) => {
                     const pid = item.producto_id;
                     if (!item.productos) return;
-                    if (!agg[pid]) agg[pid] = { id: pid, nombre: item.productos.nombre, cantidad: 0 };
+                    if (!agg[pid]) agg[pid] = { 
+                        id: pid, 
+                        nombre: item.productos.nombre, 
+                        cantidad: 0,
+                        categoria: item.productos.categorias?.nombre || 'Sin Categoría',
+                        unidad_medida: item.productos.unidad_medida || 'uds'
+                    };
                     agg[pid].cantidad += Number(item.cantidad);
                 });
                 const sorted = Object.values(agg).sort((a, b) => b.cantidad - a.cantidad).slice(0, 5);
@@ -379,9 +391,17 @@ const Dashboard: React.FC = () => {
                                 ) : (
                                     topProductos.map((p, i) => (
                                         <div key={i} className="group cursor-default">
-                                            <div className="flex justify-between items-center mb-1.5">
-                                                <span className="text-xs font-black text-slate-700 dark:text-zinc-300 truncate max-w-[150px]">{p.nombre}</span>
-                                                <span className="text-[10px] font-black text-primary">{p.cantidad} <span className="text-slate-400 font-medium">uds</span></span>
+                                            <div className="flex justify-between items-start mb-1.5">
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">{p.categoria}</span>
+                                                    <span className="text-xs font-bold text-slate-700 dark:text-zinc-200 truncate pr-2">{p.nombre}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-xs font-black text-primary block leading-none">
+                                                        {Number.isInteger(p.cantidad) ? p.cantidad : p.cantidad.toFixed(3)}
+                                                    </span>
+                                                    <span className="text-[9px] font-black uppercase text-slate-400">{p.unidad_medida}</span>
+                                                </div>
                                             </div>
                                             <div className="w-full h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                                                 <div 
