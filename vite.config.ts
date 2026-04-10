@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['logo_ticket.png'],
+      includeAssets: ['logo_ticket.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'Doble JJ - Abastecimiento',
         short_name: 'Doble JJ',
@@ -16,17 +16,17 @@ export default defineConfig({
         theme_color: '#3b82f6',
         icons: [
           {
-            src: 'logo_ticket.png',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'logo_ticket.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png'
           },
           {
-            src: 'logo_ticket.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
