@@ -10,7 +10,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     return (
-        <div className="flex flex-col lg:flex-row min-h-screen bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display transition-colors duration-300 overflow-hidden h-screen">
+        <div className="flex flex-col lg:flex-row min-h-[100dvh] bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display transition-colors duration-300 overflow-hidden h-[100dvh] w-full">
             {/* Cabecera Móvil */}
             <MobileHeader onMenuClick={() => setIsSidebarOpen(true)} />
 
