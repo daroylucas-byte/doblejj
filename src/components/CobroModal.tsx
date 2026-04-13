@@ -25,7 +25,8 @@ interface CobroModalProps {
 
 const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cliente }) => {
     const [monto, setMonto] = useState<number>(0);
-    const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'cheque' | 'tarjeta'>('efectivo');
+    const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'cheque' | 'icheque'>('efectivo');
+    const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
     const [referencia, setReferencia] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -66,6 +67,11 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
             return;
         }
 
+        if ((formaPago === 'cheque' || formaPago === 'icheque') && !fechaVencimiento) {
+            setError('La fecha de vencimiento es obligatoria para cobros con cheque.');
+            return;
+        }
+
         setLoading(true);
         setError(null);
 
@@ -92,6 +98,7 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                         forma_pago: formaPago,
                         referencia: referencia || `Pago FIFO - Ref Venta #${venta.numero || venta.id.slice(0,6)}`,
                         fecha: new Date().toISOString().split('T')[0],
+                        fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
                         estado: 'acreditado',
                         usuario_id: currentUserId
                     }])
@@ -115,6 +122,7 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                         forma_pago: formaPago,
                         referencia: referencia || 'Pago a Cuenta (Excedente FIFO)',
                         fecha: new Date().toISOString().split('T')[0],
+                        fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
                         estado: 'acreditado',
                         usuario_id: currentUserId
                     }]);
@@ -162,9 +170,9 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose}></div>
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
 
-            <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden">
                 <div className="flex items-center justify-between p-6 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
                     <div className="flex items-center gap-3">
                         <div className="size-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
@@ -224,8 +232,8 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                                 >
                                     <option value="efectivo">Efectivo</option>
                                     <option value="transferencia">Transferencia</option>
-                                    <option value="tarjeta">Tarjeta</option>
-                                    <option value="cheque">Cheque</option>
+                                    <option value="cheque">Cheque Físico</option>
+                                    <option value="icheque">e-Cheque (Digital)</option>
                                 </select>
                             </div>
                             <div>
@@ -235,10 +243,27 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                                     value={referencia}
                                     onChange={(e) => setReferencia(e.target.value)}
                                     className="w-full h-11 px-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-xl text-sm focus:ring-2 focus:ring-primary/50"
-                                    placeholder="Nro comprobante..."
+                                    placeholder="Nro comprobante / Banco..."
                                 />
                             </div>
                         </div>
+
+                        {(formaPago === 'cheque' || formaPago === 'icheque') && (
+                            <div className="">
+                                <label className="block text-[10px] font-black text-rose-500 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-xs">event_upcoming</span>
+                                    Fecha de Vencimiento del Cheque
+                                </label>
+                                <input
+                                    type="date"
+                                    value={fechaVencimiento}
+                                    onChange={(e) => setFechaVencimiento(e.target.value)}
+                                    className="w-full h-12 px-6 bg-rose-50/30 dark:bg-rose-500/5 border-2 border-rose-100 dark:border-rose-500/20 rounded-xl text-lg font-bold text-rose-600 focus:ring-4 focus:ring-rose-500/20 outline-none transition-all"
+                                    required
+                                />
+                                <p className="text-[9px] text-slate-400 mt-1 ml-1 font-medium italic">* Campo obligatorio para cobros con cheque.</p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/20">

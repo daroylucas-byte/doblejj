@@ -60,7 +60,8 @@ const Ventas: React.FC = () => {
     const [deliveryItems, setDeliveryItems] = useState<any[]>([]);
     const [deliveryStatus, setDeliveryStatus] = useState<Venta['estado']>('entregada');
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
-    const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'tarjeta'>('efectivo');
+    const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'cheque' | 'icheque'>('efectivo');
+    const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
     const [aclaracion, setAclaracion] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -314,6 +315,11 @@ const Ventas: React.FC = () => {
 
             // 5. Register Payment if any
             if (paymentAmount > 0) {
+                if ((paymentMethod === 'cheque' || paymentMethod === 'icheque') && !fechaVencimiento) {
+                    alert('La fecha de vencimiento es obligatoria para cobros con cheque.');
+                    setIsProcessing(false);
+                    return;
+                }
                 const { error: paymentError } = await supabase
                     .from('pagos')
                     .insert([{
@@ -322,6 +328,7 @@ const Ventas: React.FC = () => {
                         monto: Number(paymentAmount),
                         forma_pago: paymentMethod,
                         fecha: new Date().toISOString(),
+                        fecha_vencimiento: (paymentMethod === 'cheque' || paymentMethod === 'icheque') ? fechaVencimiento : null,
                         estado: 'acreditado',
                         usuario_id: currentUserId
                     }]);
@@ -681,10 +688,11 @@ const Ventas: React.FC = () => {
                                                 onChange={(e) => setPaymentAmount(Number(e.target.value))}
                                             />
                                         </div>
-                                        <div className="flex gap-2">
-                                            {['efectivo', 'transferencia', 'tarjeta'].map(method => (
+                                        <div className="flex flex-wrap gap-2">
+                                            {['efectivo', 'transferencia', 'cheque', 'icheque'].map(method => (
                                                 <button
                                                     key={method}
+                                                    type="button"
                                                     onClick={() => setPaymentMethod(method as any)}
                                                     className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${paymentMethod === method ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-zinc-800 text-slate-400 border border-slate-100 dark:border-zinc-700'}`}
                                                 >
@@ -692,6 +700,19 @@ const Ventas: React.FC = () => {
                                                 </button>
                                             ))}
                                         </div>
+
+                                        {(paymentMethod === 'cheque' || paymentMethod === 'icheque') && (
+                                            <div className="mt-4 p-4 bg-rose-50 dark:bg-rose-900/10 rounded-2xl border-2 border-rose-200 dark:border-rose-900/30">
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-2 block">Fecha de Vencimiento (Obligatoria)</label>
+                                                <input 
+                                                    type="date"
+                                                    required
+                                                    className="w-full px-4 py-2 bg-white dark:bg-zinc-900 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-rose-500/50"
+                                                    value={fechaVencimiento}
+                                                    onChange={(e) => setFechaVencimiento(e.target.value)}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div>

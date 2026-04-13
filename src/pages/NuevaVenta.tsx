@@ -48,8 +48,10 @@ const NuevaVenta: React.FC = () => {
     // Form State
     const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
-    const [metodoPago, setMetodoPago] = useState<'efectivo' | 'tarjeta' | 'transferencia' | 'credito'>('credito');
-    const [montoRecibido, setMontoRecibido] = useState<number>(0);
+    const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'cheque' | 'icheque' | 'cuenta_corriente'>('cuenta_corriente');
+    const [montoPago, setMontoPago] = useState<number>(0);
+    const [referenciaPago, setReferenciaPago] = useState('');
+    const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
     const [searchProduct, setSearchProduct] = useState('');
     const [filteredProducts, setFilteredProducts] = useState<Producto[]>([]);
     const [productDropdown, setProductDropdown] = useState(false);
@@ -81,9 +83,8 @@ const NuevaVenta: React.FC = () => {
 
     // Derived Totals
     const subtotal = cart.reduce((acc, item) => acc + item.subtotal, 0);
-    const total = subtotal; // For now assuming no tax/discount complexity here
-    const vuelto = montoRecibido > total ? montoRecibido - total : 0;
-
+    const total = subtotal; 
+    const vuelto = montoPago > total ? montoPago - total : 0;
     // Cart Handlers
     const addToCart = (prod: Producto) => {
         const existing = cart.find(item => item.id === prod.id);
@@ -188,17 +189,14 @@ const NuevaVenta: React.FC = () => {
 
         setSaving(true);
         try {
-            const isCredit = metodoPago === 'credito';
-
-            // 1. Create Sale Header
             const { data: venta, error: ventaErr } = await supabase
                 .from('ventas')
                 .insert([{
                     cliente_id: selectedCliente.id,
                     vendedor_id: user?.id,
                     total: total,
-                    saldo_pendiente: total,
-                    estado: 'en distribucion', // Nueva venta por defecto en distribucion
+                    saldo_pendiente: formaPago === 'cuenta_corriente' ? total : 0,
+                    estado: 'finalizada',
                     tipo_comprobante: 'ticket',
                     fecha: format(new Date(), 'yyyy-MM-dd')
                 }])
@@ -207,7 +205,6 @@ const NuevaVenta: React.FC = () => {
 
             if (ventaErr) throw ventaErr;
 
-            // 2. Insert Items (Triggers will automatically handle stock reduction)
             const itemsToInsert = cart.map(item => ({
                 venta_id: venta.id,
                 producto_id: item.id,
@@ -219,26 +216,21 @@ const NuevaVenta: React.FC = () => {
             const { error: itemsErr } = await supabase.from('venta_items').insert(itemsToInsert);
             if (itemsErr) throw itemsErr;
 
-            // 3. Client Balance & Account (Now handled by DB Trigger)
-            if (!isCredit) {
-                // If paid immediately, record it in the 'pagos' table
-                const { error: errorPago } = await supabase.from('pagos').insert({
+            if (formaPago !== 'cuenta_corriente') {
+                await supabase.from('pagos').insert({
                     cliente_id: selectedCliente.id,
                     venta_id: venta.id,
                     monto: total,
-                    forma_pago: metodoPago,
+                    forma_pago: formaPago,
+                    referencia: referenciaPago,
+                    fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
                     fecha: format(new Date(), 'yyyy-MM-dd')
                 });
-
-                if (errorPago) {
-                    console.warn("Could not insert payment into pagos:", errorPago);
-                }
             }
 
-            // 4. Generate PDF Ticket
             try {
                 const pdfItems = cart.map(item => ({
-                    id: '', // Not needed for PDF
+                    id: '',
                     producto_id: item.id,
                     cantidad: item.cantidad,
                     precio_unitario: item.precio_unitario,
@@ -337,10 +329,7 @@ const NuevaVenta: React.FC = () => {
             </MainHeader>
 
             <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 lg:p-6 overflow-x-hidden overflow-y-auto lg:overflow-hidden">
-                {/* Left Panel: Selection & Table (Flex-[2]) */}
                 <div className="flex-shrink-0 lg:flex-[2] flex flex-col gap-6 lg:overflow-hidden overflow-visible">
-
-                    {/* Selector Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 shrink-0">
                         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-5 rounded-2xl shadow-sm transition-all hover:shadow-md relative" ref={clienteSearchRef}>
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">1. Seleccionar Cliente</label>
@@ -366,7 +355,6 @@ const NuevaVenta: React.FC = () => {
                                 )}
                             </div>
 
-                            {/* Cliente Search Dropdown */}
                             {clienteDropdown && filteredClientes.length > 0 && (
                                 <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl z-50 max-h-[300px] overflow-y-auto p-2">
                                     {filteredClientes.map(c => (
@@ -521,29 +509,42 @@ const NuevaVenta: React.FC = () => {
                 {/* Right Panel: Totals & Payments (W-96) */}
                 <div className="w-full lg:w-[420px] flex flex-col gap-6 overflow-y-visible lg:overflow-y-auto shrink-0 lg:pr-2 lg:pb-6 lg:custom-scrollbar">
 
-                    {/* Payment Method Selection */}
                     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm transition-all hover:shadow-md">
                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">3. Método de Pago</h3>
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             {[
                                 { id: 'efectivo', label: 'Efectivo', icon: 'payments' },
-                                { id: 'tarjeta', label: 'Tarjeta', icon: 'credit_card' },
                                 { id: 'transferencia', label: 'Transferencia', icon: 'account_balance' },
-                                { id: 'credito', label: 'Cta. Corriente', icon: 'history_edu' }
+                                { id: 'cheque', label: 'Cheque', icon: 'payments' },
+                                { id: 'icheque', label: 'iCheque', icon: 'account_balance' },
+                                { id: 'cuenta_corriente', label: 'Cta. Corriente', icon: 'history_edu' }
                             ].map(metodo => (
                                 <button
                                     key={metodo.id}
-                                    onClick={() => setMetodoPago(metodo.id as any)}
-                                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all group ${metodoPago === metodo.id ? 'border-primary bg-primary/10 text-primary' : 'border-slate-100 dark:border-zinc-800 hover:border-primary/30 text-slate-400'}`}
+                                    onClick={() => setFormaPago(metodo.id as any)}
+                                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all group ${formaPago === metodo.id ? 'border-primary bg-primary/10 text-primary' : 'border-slate-100 dark:border-zinc-800 hover:border-primary/30 text-slate-400'}`}
                                 >
-                                    <span className={`material-symbols-outlined text-3xl mb-1 group-hover:scale-110 transition-transform ${metodoPago === metodo.id ? 'fill-1' : ''}`}>{metodo.icon}</span>
+                                    <span className={`material-symbols-outlined text-3xl mb-1 group-hover:scale-110 transition-transform ${formaPago === metodo.id ? 'fill-1' : ''}`}>{metodo.icon}</span>
                                     <span className="text-[10px] font-black uppercase tracking-tighter">{metodo.label}</span>
                                 </button>
                             ))}
                         </div>
 
                         <div className="space-y-4">
-                            {metodoPago !== 'credito' && (
+                            {(formaPago === 'cheque' || formaPago === 'icheque') && (
+                                <div className="animate-in slide-in-from-top-2">
+                                    <label className="block text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1 ml-1">Vencimiento del Cheque</label>
+                                    <input
+                                        type="date"
+                                        value={fechaVencimiento}
+                                        onChange={(e) => setFechaVencimiento(e.target.value)}
+                                        className="w-full h-12 px-4 bg-rose-50/50 border-2 border-rose-100 rounded-xl text-lg font-bold text-rose-600 focus:ring-4 focus:ring-rose-500/10 outline-none"
+                                        required
+                                    />
+                                </div>
+                            )}
+
+                            {formaPago !== 'cuenta_corriente' && (
                                 <>
                                     <div>
                                         <label className="block text-[10px] font-black text-slate-400 uppercase ml-1 mb-1">Monto Recibido</label>
@@ -552,8 +553,8 @@ const NuevaVenta: React.FC = () => {
                                             <input
                                                 className="w-full pl-8 pr-4 py-4 bg-slate-50 dark:bg-zinc-800 border-none rounded-2xl font-black text-2xl text-right focus:ring-2 focus:ring-primary/50 transition-all text-primary"
                                                 type="number"
-                                                value={montoRecibido || ''}
-                                                onChange={(e) => setMontoRecibido(Number(e.target.value))}
+                                                value={montoPago || ''}
+                                                onChange={(e) => setMontoPago(Number(e.target.value))}
                                             />
                                         </div>
                                     </div>
@@ -561,9 +562,21 @@ const NuevaVenta: React.FC = () => {
                                         <span className="text-sm font-bold text-slate-500">Vuelto Sugerido:</span>
                                         <span className={`text-xl font-black ${vuelto > 0 ? 'text-green-500' : 'text-slate-300'}`}>$ {vuelto.toLocaleString()}</span>
                                     </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">
+                                            Referencia / Comprobante
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={referenciaPago}
+                                            onChange={(e) => setReferenciaPago(e.target.value)}
+                                            className="w-full h-10 px-4 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-primary/50"
+                                            placeholder="Nro transacción, banco, etc..."
+                                        />
+                                    </div>
                                 </>
                             )}
-                            {metodoPago === 'credito' && (
+                            {formaPago === 'cuenta_corriente' && (
                                 <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20">
                                     <p className="text-xs text-primary font-bold flex items-center gap-2">
                                         <span className="material-symbols-outlined text-sm">info</span>

@@ -17,7 +17,8 @@ export default function Caja() {
     const [ingresos, setIngresos] = useState<number>(0);
     const [ingresosEfvo, setIngresosEfvo] = useState<number>(0);
     const [ingresosTransf, setIngresosTransf] = useState<number>(0);
-    const [ingresosTarjeta, setIngresosTarjeta] = useState<number>(0);
+    const [ingresosCheque, setIngresosCheque] = useState<number>(0);
+    const [ingresosICheque, setIngresosICheque] = useState<number>(0);
     const [egresos, setEgresos] = useState<number>(0);
     const [egresosEfvo, setEgresosEfvo] = useState<number>(0);
     const [saldoReal, setSaldoReal] = useState<number>(0);
@@ -98,7 +99,7 @@ export default function Caja() {
             if (toDate) queryPagos = queryPagos.lte('fecha', toDate);
             const { data: pagosData } = await queryPagos;
 
-            const pagosRecibidos = (pagosData || []).filter(p => p.forma_pago === 'efectivo' || p.forma_pago === 'transferencia' || p.forma_pago === 'tarjeta');
+            const pagosRecibidos = (pagosData || []).filter(p => p.forma_pago === 'efectivo' || p.forma_pago === 'transferencia' || p.forma_pago === 'cheque' || p.forma_pago === 'icheque');
 
             // LEGACY: Ventas cobradas en el momento (ventas históricas que no usaban la tabla pagos)
             let queryVentas = supabase.from('ventas').select('id, total, saldo_pendiente, created_at, numero, estado, fecha').gte('fecha', fromDate);
@@ -115,12 +116,14 @@ export default function Caja() {
             const ingresosEfvoVal = pagosRecibidos.filter(p => p.forma_pago === 'efectivo').reduce((acc, p) => acc + (p.monto || 0), 0) +
                 ventasCobradasHistoricas.reduce((acc, v) => acc + (v.total || 0), 0);
             const ingresosTransfVal = pagosRecibidos.filter(p => p.forma_pago === 'transferencia').reduce((acc, p) => acc + (p.monto || 0), 0);
-            const ingresosTarjetaVal = pagosRecibidos.filter(p => p.forma_pago === 'tarjeta').reduce((acc, p) => acc + (p.monto || 0), 0);
+            const ingresosChequeVal = pagosRecibidos.filter(p => p.forma_pago === 'cheque').reduce((acc, p) => acc + (p.monto || 0), 0);
+            const ingresosIChequeVal = pagosRecibidos.filter(p => p.forma_pago === 'icheque').reduce((acc, p) => acc + (p.monto || 0), 0);
 
             setIngresosEfvo(ingresosEfvoVal);
             setIngresosTransf(ingresosTransfVal);
-            setIngresosTarjeta(ingresosTarjetaVal);
-            setIngresos(ingresosEfvoVal + ingresosTransfVal + ingresosTarjetaVal);
+            setIngresosCheque(ingresosChequeVal);
+            setIngresosICheque(ingresosIChequeVal);
+            setIngresos(ingresosEfvoVal + ingresosTransfVal + ingresosChequeVal + ingresosIChequeVal);
 
 
             // 3. Traer Egresos
@@ -249,7 +252,8 @@ export default function Caja() {
                 total_egresos: egresos,
                 total_efectivo: ingresosEfvo,
                 total_transferencia: ingresosTransf,
-                total_tarjeta: ingresosTarjeta,
+                total_cheque: ingresosCheque,
+                total_icheque: ingresosICheque,
                 saldo_teorico: saldoTeorico,
                 saldo_real: saldoReal,
                 diferencia: diferencia,
@@ -400,16 +404,16 @@ export default function Caja() {
                         </div>
                         <div className="mt-4 pt-4 border-t border-emerald-50 dark:border-emerald-900/20 space-y-1">
                             <div className="flex justify-between text-[10px] font-bold">
-                                <span className="text-slate-400 uppercase">Efectivo:</span>
-                                <span className="text-emerald-600 dark:text-emerald-400">$ {ingresosEfvo.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                                <span className="text-slate-400 uppercase">Efvo/Trans:</span>
+                                <span className="text-emerald-600 dark:text-emerald-400">$ {(ingresosEfvo + ingresosTransf).toLocaleString('es-AR')}</span>
                             </div>
                             <div className="flex justify-between text-[10px] font-bold">
-                                <span className="text-slate-400 uppercase">Transf:</span>
-                                <span className="text-blue-500">$ {ingresosTransf.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                                <span className="text-slate-400 uppercase">Cheque:</span>
+                                <span className="text-amber-500">$ {ingresosCheque.toLocaleString('es-AR')}</span>
                             </div>
                             <div className="flex justify-between text-[10px] font-bold">
-                                <span className="text-slate-400 uppercase">Tarjeta:</span>
-                                <span className="text-purple-500">$ {ingresosTarjeta.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                                <span className="text-slate-400 uppercase">iCheque:</span>
+                                <span className="text-rose-500">$ {ingresosICheque.toLocaleString('es-AR')}</span>
                             </div>
                         </div>
                     </div>
@@ -531,7 +535,7 @@ export default function Caja() {
                                     <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha Cierre</th>
                                     <th className="hidden sm:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Efectivo</th>
                                     <th className="hidden lg:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Transferencia</th>
-                                    <th className="hidden lg:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Tarjeta</th>
+                                    <th className="hidden lg:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Cheques (F/D)</th>
                                     <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Total General</th>
                                     <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Acciones</th>
                                 </tr>
@@ -556,8 +560,8 @@ export default function Caja() {
                                             <td className="hidden lg:table-cell px-4 md:px-6 py-4 text-center text-xs font-black text-blue-500">
                                                 $ {(c.total_transferencia || 0).toLocaleString('es-AR')}
                                             </td>
-                                            <td className="hidden lg:table-cell px-4 md:px-6 py-4 text-center text-xs font-black text-purple-500">
-                                                $ {(c.total_tarjeta || 0).toLocaleString('es-AR')}
+                                            <td className="hidden lg:table-cell px-4 md:px-6 py-4 text-center text-xs font-black text-amber-500">
+                                                $ {( (c.total_cheque || 0) + (c.total_icheque || 0) ).toLocaleString('es-AR')}
                                             </td>
                                             <td className="px-4 md:px-6 py-4 text-center text-xs font-black text-slate-700 dark:text-slate-200">
                                                 $ {c.total_ingresos?.toLocaleString('es-AR')}
@@ -614,8 +618,12 @@ export default function Caja() {
                                         <p className="font-black text-lg text-blue-500">$ {ingresosTransf.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
                                     </div>
                                     <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-1">Tarjetas</p>
-                                        <p className="font-black text-lg text-purple-500">$ {ingresosTarjeta.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-1">Cheque</p>
+                                        <p className="font-black text-lg text-amber-600">$ {ingresosCheque.toLocaleString('es-AR')}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">iCheque</p>
+                                        <p className="font-black text-lg text-rose-600">$ {ingresosICheque.toLocaleString('es-AR')}</p>
                                     </div>
                                     <div className="bg-slate-900 dark:bg-zinc-100 p-4 rounded-2xl">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Total Cobrado (Turno)</p>
