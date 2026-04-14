@@ -196,7 +196,7 @@ const NuevaVenta: React.FC = () => {
                     vendedor_id: user?.id,
                     total: total,
                     saldo_pendiente: formaPago === 'cuenta_corriente' ? total : 0,
-                    estado: 'finalizada',
+                    estado: 'en distribucion',
                     tipo_comprobante: 'ticket',
                     fecha: format(new Date(), 'yyyy-MM-dd')
                 }])
