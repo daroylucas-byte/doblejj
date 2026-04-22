@@ -222,7 +222,12 @@ const ClienteDetalle: React.FC = () => {
                 clientes: cliente!
             };
 
-            generateSaleTicket(ventaFull, items || []);
+            const itemsFormatted = items?.map((item: any) => ({
+                ...item,
+                productos: Array.isArray(item.productos) ? item.productos[0] : item.productos
+            }));
+
+            generateSaleTicket(ventaFull, (itemsFormatted as any) || []);
         } catch (error) {
             console.error('Error generating ticket:', error);
             alert('Error al generar el ticket');
