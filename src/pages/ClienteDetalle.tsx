@@ -168,12 +168,13 @@ const ClienteDetalle: React.FC = () => {
                 return;
             }
 
-            // Determinar tipo de movimiento
-            // delta > 0 significa que el saldo subió (de -1000 a -500 o de 0 a 500) -> Pago/Haber
-            // delta < 0 significa que el saldo bajó (de -1000 a -1500) -> Cargo/Debe
-            const tipo: 'cargo' | 'pago' = delta > 0 ? 'pago' : 'cargo';
+            // --- LÓGICA DE SIGNOS ---
+            // targetSaldo > currentSaldo significa que la DEUDA subió -> Cargo/Debe
+            // targetSaldo < currentSaldo significa que la DEUDA bajó -> Pago/Haber
+            const tipo: 'cargo' | 'pago' = delta > 0 ? 'cargo' : 'pago';
             const monto = Math.abs(delta);
 
+            // 1. Insertar el movimiento en cuenta corriente
             const { error: insertErr } = await supabase
                 .from('cuenta_corriente')
                 .insert([{
@@ -188,10 +189,42 @@ const ClienteDetalle: React.FC = () => {
 
             if (insertErr) throw insertErr;
 
+            // 2. CONCILIACIÓN INTELIGENTE (FIFO)
+            const { data: vPendientes } = await supabase
+                .from('ventas')
+                .select('id, saldo_pendiente, total')
+                .eq('cliente_id', id)
+                .gt('saldo_pendiente', 0)
+                .not('estado', 'in', '("presupuesto","cancelada","anulada")')
+                .order('fecha', { ascending: true });
+
+            if (vPendientes && vPendientes.length > 0) {
+                let v_reduction = -delta; // Si delta es positivo (más deuda), la reducción es negativa
+                
+                if (v_reduction > 0) {
+                    for (const v of vPendientes) {
+                        if (v_reduction <= 0) break;
+                        if (v_reduction >= v.saldo_pendiente) {
+                            v_reduction -= v.saldo_pendiente;
+                            await supabase.from('ventas').update({ saldo_pendiente: 0, total_pagado: v.total }).eq('id', v.id);
+                        } else {
+                            const nuevoS = v.saldo_pendiente - v_reduction;
+                            await supabase.from('ventas').update({ saldo_pendiente: nuevoS, total_pagado: v.total - nuevoS }).eq('id', v.id);
+                            v_reduction = 0;
+                        }
+                    }
+                } else if (v_reduction < 0) {
+                    const vMasNueva = vPendientes[vPendientes.length - 1];
+                    await supabase.from('ventas').update({ 
+                        saldo_pendiente: vMasNueva.saldo_pendiente + Math.abs(v_reduction) 
+                    }).eq('id', vMasNueva.id);
+                }
+            }
+
             setShowAjusteModal(false);
             setNuevoSaldoReal('');
             setConceptoAjuste('Saldo Anterior');
-            fetchData(); // Recargar datos
+            fetchData();
         } catch (error) {
             console.error('Error al ajustar saldo:', error);
             alert('Error al procesar el ajuste de saldo');
@@ -316,7 +349,7 @@ const ClienteDetalle: React.FC = () => {
                             <div className="mt-4 w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-white transition-all duration-1000"
-                                    style={{ width: `${Math.min(100, (Math.max(0, -cliente.saldo_actual) / cliente.limite_credito) * 100)}%` }}
+                                    style={{ width: `${Math.min(100, (Math.max(0, cliente.saldo_actual) / cliente.limite_credito) * 100)}%` }}
                                 ></div>
                             </div>
                             <p className="text-[10px] mt-2 font-bold opacity-70">Uso de línea de crédito</p>
@@ -342,10 +375,10 @@ const ClienteDetalle: React.FC = () => {
                                         <span className="material-symbols-outlined text-sm">edit</span>
                                     </button>
                                 </div>
-                                <p className={`text-2xl font-black ${cliente.saldo_actual < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                <p className={`text-2xl font-black ${cliente.saldo_actual > 0 ? 'text-red-500' : 'text-green-500'}`}>
                                     $ {Math.abs(cliente.saldo_actual).toLocaleString()}
                                 </p>
-                                <span className="text-[10px] font-bold text-slate-400">{cliente.saldo_actual < 0 ? 'Adeuda' : 'A favor'}</span>
+                                <span className="text-[10px] font-bold text-slate-400">{cliente.saldo_actual > 0 ? 'Adeuda' : 'A favor'}</span>
                             </div>
                             <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ventas Realizadas</p>
@@ -483,7 +516,7 @@ const ClienteDetalle: React.FC = () => {
                                                                 <td className="py-3 text-right font-black text-green-600">
                                                                     {isHaber ? `$ ${m.monto.toLocaleString()}` : '-'}
                                                                 </td>
-                                                                <td className={`py-3 text-right font-black ${m.saldo_acumulado < 0 ? 'text-red-500' : 'text-primary'}`}>
+                                                                <td className={`py-3 text-right font-black ${m.saldo_acumulado > 0 ? 'text-red-500' : 'text-primary'}`}>
                                                                     $ {Math.abs(m.saldo_acumulado).toLocaleString()}
                                                                 </td>
                                                             </tr>
@@ -594,7 +627,7 @@ const ClienteDetalle: React.FC = () => {
                             <div className="bg-primary/5 rounded-xl p-4 border border-primary/10">
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo Actual en Sistema</span>
-                                    <span className={`text-xs font-black ${cliente.saldo_actual < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                    <span className={`text-xs font-black ${cliente.saldo_actual > 0 ? 'text-red-500' : 'text-green-500'}`}>
                                         $ {cliente.saldo_actual.toLocaleString()}
                                     </span>
                                 </div>
@@ -617,7 +650,7 @@ const ClienteDetalle: React.FC = () => {
                                         />
                                     </div>
                                     <p className="text-[9px] text-slate-400 font-bold italic ml-1">
-                                        * Ingresa el monto final que el cliente debería tener (usa "-" para deuda).
+                                        * Ingresa el monto que el cliente debe (Positivo = Deuda, Negativo = A favor).
                                     </p>
                                 </div>
 

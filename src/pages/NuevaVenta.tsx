@@ -584,7 +584,7 @@ const NuevaVenta: React.FC = () => {
                                     </p>
                                     {selectedCliente && (
                                         <div className="mt-2 text-[10px] text-slate-500 font-bold uppercase">
-                                            Límite disponible: <span className="text-slate-900 dark:text-white">$ {(selectedCliente.limite_credito + selectedCliente.saldo_actual).toLocaleString()}</span>
+                                            Límite disponible: <span className="text-slate-900 dark:text-white">$ {(selectedCliente.limite_credito - selectedCliente.saldo_actual).toLocaleString()}</span>
                                         </div>
                                     )}
                                 </div>

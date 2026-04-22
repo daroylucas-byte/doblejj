@@ -48,7 +48,7 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                 .select('id, numero, fecha, total, total_pagado, saldo_pendiente')
                 .eq('cliente_id', cliente.id)
                 .gt('saldo_pendiente', 0)
-                .not('estado', 'in', '("presupuesto","cancelada")')
+                .not('estado', 'in', '("presupuesto","cancelada","anulada")')
                 .order('fecha', { ascending: true });
 
             if (error) throw error;
