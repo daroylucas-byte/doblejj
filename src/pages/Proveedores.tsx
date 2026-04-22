@@ -4,6 +4,7 @@ import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
 import ProveedorModal from '../components/ProveedorModal';
+import PagoProveedorModal from '../components/PagoProveedorModal';
 
 interface Proveedor {
     id: string;
@@ -24,7 +25,9 @@ const Proveedores: React.FC = () => {
     const [categoryFilter, setCategoryFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [showPagoModal, setShowPagoModal] = useState(false);
     const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null);
+    const [pagoProveedor, setPagoProveedor] = useState<Proveedor | null>(null);
 
     const [stats, setStats] = useState({
         totalDeuda: 0,
@@ -82,6 +85,11 @@ const Proveedores: React.FC = () => {
     const handleEdit = (proveedor: Proveedor) => {
         setEditingProveedor(proveedor);
         setIsModalOpen(true);
+    };
+
+    const handlePago = (proveedor: Proveedor) => {
+        setPagoProveedor(proveedor);
+        setShowPagoModal(true);
     };
 
     return (
@@ -251,6 +259,13 @@ const Proveedores: React.FC = () => {
                                                     >
                                                         <span className="material-symbols-outlined text-lg focus:fill-1">visibility</span>
                                                     </Link>
+                                                    <button
+                                                        onClick={() => handlePago(p)}
+                                                        className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 transition-all active:scale-90"
+                                                        title="Registrar Pago"
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">payments</span>
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -271,6 +286,14 @@ const Proveedores: React.FC = () => {
                         fetchData();
                     }}
                     proveedor={editingProveedor}
+                />
+            )}
+            {showPagoModal && (
+                <PagoProveedorModal
+                    isOpen={showPagoModal}
+                    onClose={() => setShowPagoModal(false)}
+                    onSuccess={fetchData}
+                    proveedor={pagoProveedor}
                 />
             )}
         </Layout>

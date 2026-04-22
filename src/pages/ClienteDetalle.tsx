@@ -4,7 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
-import { generateClientStatement } from '../utils/pdfGenerator';
+import { generateClientStatement, generateSaleTicket } from '../utils/pdfGenerator';
 
 interface Cliente {
     id: string;
@@ -197,6 +197,35 @@ const ClienteDetalle: React.FC = () => {
             alert('Error al procesar el ajuste de saldo');
         } finally {
             setProcesandoAjuste(false);
+        }
+    };
+
+    const handleGenerateTicket = async (venta: Venta) => {
+        try {
+            // Fetch items for this sale
+            const { data: items, error } = await supabase
+                .from('venta_items')
+                .select(`
+                    id,
+                    cantidad,
+                    precio_unitario,
+                    subtotal,
+                    productos (nombre, codigo)
+                `)
+                .eq('venta_id', venta.id);
+
+            if (error) throw error;
+
+            // Prepare the venta object for the generator
+            const ventaFull = {
+                ...venta,
+                clientes: cliente!
+            };
+
+            generateSaleTicket(ventaFull, items || []);
+        } catch (error) {
+            console.error('Error generating ticket:', error);
+            alert('Error al generar el ticket');
         }
     };
 
@@ -481,7 +510,11 @@ const ClienteDetalle: React.FC = () => {
                                                 </div>
                                                 <div className="mt-4 flex justify-between items-center">
                                                     <p className="text-lg font-black text-primary">$ {Number(v.total).toLocaleString()}</p>
-                                                    <button className="p-2 text-slate-400 hover:text-primary transition-colors">
+                                                    <button 
+                                                        onClick={() => handleGenerateTicket(v)}
+                                                        className="p-2 text-slate-400 hover:text-primary transition-colors"
+                                                        title="Generar Ticket"
+                                                    >
                                                         <span className="material-symbols-outlined">receipt_long</span>
                                                     </button>
                                                 </div>
