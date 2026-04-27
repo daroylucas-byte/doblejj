@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -37,7 +36,6 @@ interface CartItem extends Producto {
 }
 
 const NuevaVenta: React.FC = () => {
-    const navigate = useNavigate();
     const { user } = useAuthStore();
 
     const [clientes, setClientes] = useState<Cliente[]>([]);

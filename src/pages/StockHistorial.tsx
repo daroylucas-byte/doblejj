@@ -4,7 +4,6 @@ import { format, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
-import { useAuthStore } from '../store/authStore';
 
 interface Producto {
     id: string;
@@ -35,7 +34,6 @@ interface MovimientoStock {
 }
 
 export default function StockHistorial() {
-    const { user } = useAuthStore();
     const [searchParams] = useSearchParams();
     const initialProductId = searchParams.get('id') || 'all';
 
