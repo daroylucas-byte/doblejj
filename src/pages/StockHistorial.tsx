@@ -21,6 +21,7 @@ interface MovimientoStock {
     stock_nuevo: number;
     motivo: string;
     referencia_tipo: string;
+    referencia_id: string;
     created_at: string;
     producto: {
         nombre: string;
@@ -31,6 +32,7 @@ interface MovimientoStock {
         nombre: string;
         apellido: string;
     };
+    entidad?: string;
 }
 
 export default function StockHistorial() {
@@ -68,7 +70,6 @@ export default function StockHistorial() {
             const fetchedProductos = data || [];
             setProductos(fetchedProductos);
 
-            // If we came with an ID, set the search term to the product name
             if (initialProductId !== 'all') {
                 const prod = fetchedProductos.find(p => p.id === initialProductId);
                 if (prod) setSearchTerm(prod.nombre);
@@ -108,13 +109,35 @@ export default function StockHistorial() {
             const { data, error } = await query.limit(100);
             if (error) throw error;
 
-            const movs = data as any[];
-            setMovimientos(movs || []);
+            // Enriquecer con nombres de clientes/proveedores
+            const movsRaw = data as any[];
+            const movsEnriquecidos = await Promise.all(movsRaw.map(async (m) => {
+                let entidad = '';
+                
+                if (m.referencia_tipo === 'venta' && m.referencia_id) {
+                    const { data: v } = await supabase
+                        .from('ventas')
+                        .select('cliente:clientes(razon_social)')
+                        .eq('id', m.referencia_id)
+                        .maybeSingle();
+                    if (v?.cliente) entidad = (v.cliente as any).razon_social;
+                } else if (m.referencia_tipo === 'compra' && m.referencia_id) {
+                    const { data: c } = await supabase
+                        .from('compras')
+                        .select('proveedor:proveedores(razon_social)')
+                        .eq('id', m.referencia_id)
+                        .maybeSingle();
+                    if (c?.proveedor) entidad = (c.proveedor as any).razon_social;
+                }
 
-            // Calculate local stats for the filtered set
-            const ent = movs.filter(m => m.tipo === 'entrada').reduce((acc, m) => acc + Number(m.cantidad), 0);
-            const sal = movs.filter(m => m.tipo === 'salida').reduce((acc, m) => acc + Number(m.cantidad), 0);
-            const aju = movs.filter(m => m.tipo === 'ajuste').reduce((acc, m) => acc + Number(m.cantidad), 0);
+                return { ...m, entidad };
+            }));
+
+            setMovimientos(movsEnriquecidos);
+
+            const ent = movsEnriquecidos.filter(m => m.tipo === 'entrada').reduce((acc, m) => acc + Number(m.cantidad), 0);
+            const sal = movsEnriquecidos.filter(m => m.tipo === 'salida').reduce((acc, m) => acc + Number(m.cantidad), 0);
+            const aju = movsEnriquecidos.filter(m => m.tipo === 'ajuste').reduce((acc, m) => acc + Number(m.cantidad), 0);
             setStats({ entradas: ent, salidas: sal, ajustes: aju });
 
         } catch (error) {
@@ -141,7 +164,6 @@ export default function StockHistorial() {
 
             <div className="p-4 lg:p-8 max-w-[1600px] mx-auto w-full space-y-6 pb-24 lg:pb-8">
                 
-                {/* Filters Section */}
                 <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2rem] p-6 shadow-sm space-y-6">
                     <div className="flex flex-col lg:flex-row gap-6 items-end justify-between">
                         <div className="w-full lg:flex-1 space-y-2 relative">
@@ -250,32 +272,30 @@ export default function StockHistorial() {
                     </div>
                 </div>
 
-                {/* Stats Summary */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800/30 p-6 rounded-[2rem] flex items-center justify-between">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-1">Total Ingresos</p>
-                            <h4 className="text-3xl font-black text-emerald-600 dark:text-emerald-400">+{stats.entradas}</h4>
+                            <h4 className="text-3xl font-black text-emerald-600 dark:text-emerald-400">+{stats.entradas.toFixed(2)}</h4>
                         </div>
                         <span className="material-symbols-outlined text-4xl text-emerald-200 dark:text-emerald-800/50">trending_up</span>
                     </div>
                     <div className="bg-rose-50 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-800/30 p-6 rounded-[2rem] flex items-center justify-between">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">Total Salidas</p>
-                            <h4 className="text-3xl font-black text-rose-600 dark:text-rose-400">-{stats.salidas}</h4>
+                            <h4 className="text-3xl font-black text-rose-600 dark:text-rose-400">-{stats.salidas.toFixed(2)}</h4>
                         </div>
                         <span className="material-symbols-outlined text-4xl text-rose-200 dark:text-rose-800/50">trending_down</span>
                     </div>
                     <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 p-6 rounded-[2rem] flex items-center justify-between">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-1">Ajustes Realizados</p>
-                            <h4 className="text-3xl font-black text-amber-600 dark:text-amber-400">{stats.ajustes}</h4>
+                            <h4 className="text-3xl font-black text-amber-600 dark:text-amber-400">{stats.ajustes.toFixed(2)}</h4>
                         </div>
                         <span className="material-symbols-outlined text-4xl text-amber-200 dark:text-amber-800/50">tune</span>
                     </div>
                 </div>
 
-                {/* Movements Table */}
                 <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2rem] overflow-hidden shadow-sm">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
@@ -323,20 +343,25 @@ export default function StockHistorial() {
                                             </td>
                                             <td className="px-6 py-5">
                                                 <div className="mb-2">{getTipoBadge(m.tipo)}</div>
-                                                <div className="text-[10px] font-bold text-slate-500 uppercase italic line-clamp-1">
+                                                <div className="text-[10px] font-bold text-slate-500 uppercase italic line-clamp-2 max-w-[250px]">
                                                     {m.motivo || `Referencia: ${m.referencia_tipo}`}
+                                                    {m.entidad && (
+                                                        <span className="text-primary block not-italic mt-1 border-t border-slate-100 dark:border-zinc-800 pt-1 font-black">
+                                                            {m.entidad}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-5 text-center">
                                                 <div className={`text-lg font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : m.tipo === 'salida' ? 'text-rose-600' : 'text-amber-600'}`}>
-                                                    {m.tipo === 'entrada' ? '+' : m.tipo === 'salida' ? '-' : ''}{m.cantidad}
+                                                    {m.tipo === 'entrada' ? '+' : m.tipo === 'salida' ? '-' : ''}{Number(m.cantidad).toFixed(2)}
                                                     <span className="text-[9px] font-black ml-1 opacity-60 uppercase">{m.producto?.unidad_medida}</span>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-5 text-right">
-                                                <div className="text-[10px] font-black text-slate-400 uppercase mb-1">Stock Resultante</div>
+                                                <div className="text-[10px] font-black text-slate-400 uppercase mb-1 text-right">Stock Resultante</div>
                                                 <div className="text-base font-black text-slate-900 dark:text-white">
-                                                    {m.stock_nuevo} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase">{m.producto?.unidad_medida}</span>
+                                                    {Number(m.stock_nuevo).toFixed(2)} <span className="text-[10px] text-slate-400 font-bold ml-1 uppercase">{m.producto?.unidad_medida}</span>
                                                 </div>
                                             </td>
                                         </tr>

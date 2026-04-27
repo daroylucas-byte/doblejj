@@ -79,67 +79,34 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
             const { data: { user } } = await supabase.auth.getUser();
             const currentUserId = user?.id;
 
-            let remainingAmount = monto;
-            const appliedPayments = [];
+            // 1. Registrar el pago en la tabla de pagos (para el historial de recibos)
+            // Lo registramos como un pago general si hay múltiples ventas o excedente
+            const { error: pagoErr } = await supabase
+                .from('pagos')
+                .insert([{
+                    venta_id: null, 
+                    cliente_id: cliente.id,
+                    monto: monto,
+                    forma_pago: formaPago,
+                    referencia: referencia || `Cobro General - ${formaPago.toUpperCase()}`,
+                    fecha: new Date().toISOString().split('T')[0],
+                    fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
+                    estado: 'acreditado',
+                    usuario_id: currentUserId
+                }]);
 
-            // 1. Distribute among pending sales (FIFO)
-            for (const venta of ventasPendientes) {
-                if (remainingAmount <= 0) break;
+            if (pagoErr) throw pagoErr;
 
-                const appliedToThisVenta = Math.min(remainingAmount, Number(venta.saldo_pendiente));
-                
-                // Create payment record for this sale
-                const { error: pagoErr } = await supabase
-                    .from('pagos')
-                    .insert([{
-                        venta_id: venta.id,
-                        cliente_id: cliente.id,
-                        monto: appliedToThisVenta,
-                        forma_pago: formaPago,
-                        referencia: referencia || `Pago FIFO - Ref Venta #${venta.numero || venta.id.slice(0,6)}`,
-                        fecha: new Date().toISOString().split('T')[0],
-                        fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
-                        estado: 'acreditado',
-                        usuario_id: currentUserId
-                    }])
-                    .select()
-                    .single();
-
-                if (pagoErr) throw pagoErr;
-                
-                appliedPayments.push({ ventaId: venta.id, amount: appliedToThisVenta });
-                remainingAmount -= appliedToThisVenta;
-            }
-
-            // 2. Handle Surplus (A Cuenta)
-            if (remainingAmount > 0) {
-                const { error: surplusErr } = await supabase
-                    .from('pagos')
-                    .insert([{
-                        venta_id: null, // Allowable now due to migration
-                        cliente_id: cliente.id,
-                        monto: remainingAmount,
-                        forma_pago: formaPago,
-                        referencia: referencia || 'Pago a Cuenta (Excedente FIFO)',
-                        fecha: new Date().toISOString().split('T')[0],
-                        fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
-                        estado: 'acreditado',
-                        usuario_id: currentUserId
-                    }]);
-                if (surplusErr) throw surplusErr;
-            }
-
-            // 3. Register ONE entry in Cuenta Corriente for the TOTAL amount
-            // This ensures the client's total balance is updated correctly in one go
-            // fetch current client balance first
-            const { data: latestCliente, error: lErr } = await supabase
+            // 2. Registrar el movimiento en Cuenta Corriente
+            // El Trigger de la DB se encargará de actualizar el saldo del cliente 
+            // y reconciliar las facturas de ventas automáticamente (FIFO).
+            const { data: latestCliente } = await supabase
                 .from('clientes')
                 .select('saldo_actual')
                 .eq('id', cliente.id)
                 .single();
             
-            if (lErr) throw lErr;
-            const currentSaldo = Number(latestCliente.saldo_actual);
+            const currentSaldo = Number(latestCliente?.saldo_actual || cliente.saldo_actual);
 
             const { error: ccErr } = await supabase
                 .from('cuenta_corriente')
@@ -198,11 +165,11 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
 
                     <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 flex justify-between items-center">
                         <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Deuda Total Pendiente</p>
-                            <p className="text-2xl font-black text-rose-600">$ {deudaTotal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saldo en Cuenta (Ficha)</p>
+                            <p className="text-2xl font-black text-rose-600">$ {Number(cliente.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
                         </div>
                         <div className="text-right">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ventas con Saldo</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ventas Pendientes</p>
                             <p className="text-lg font-bold text-slate-700 dark:text-slate-300">{ventasPendientes.length}</p>
                         </div>
                     </div>

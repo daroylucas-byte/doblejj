@@ -146,8 +146,17 @@ const NuevaCompra: React.FC = () => {
             const { error: itemsErr } = await supabase.from('compra_items').insert(itemsToInsert);
             if (itemsErr) throw itemsErr;
 
-            // 3. Update Stock and Costs
+            // 3. Update Stock, Costs and Record Movements
             for (const item of cart) {
+                // Get current stock for accurate movement record
+                const { data: currentProd } = await supabase
+                    .from('productos')
+                    .select('stock_actual')
+                    .eq('id', item.id)
+                    .single();
+                
+                const stockAnterior = currentProd?.stock_actual || 0;
+
                 // Update product table: add stock and update last cost price
                 const { error: stockErr } = await supabase.rpc('increment_stock', {
                     row_id: item.id,
@@ -158,11 +167,24 @@ const NuevaCompra: React.FC = () => {
                     // Fallback to manual if RPC doesn't exist
                     await supabase.from('productos')
                         .update({
-                            stock_actual: item.stock_actual + item.cantidad,
+                            stock_actual: stockAnterior + item.cantidad,
                             precio_costo: item.nuevo_precio_costo
                         })
                         .eq('id', item.id);
                 }
+
+                // NUEVO: Registrar el movimiento en el historial
+                await supabase.from('movimientos_stock').insert({
+                    producto_id: item.id,
+                    tipo: 'entrada',
+                    cantidad: item.cantidad,
+                    stock_anterior: stockAnterior,
+                    stock_nuevo: stockAnterior + item.cantidad,
+                    motivo: `Compra nro ${numeroFactura || 'S/N'}`,
+                    referencia_tipo: 'compra',
+                    referencia_id: compra.id,
+                    usuario_id: user?.id
+                });
             }
 
             // 4. Register Payment or Debt

@@ -14,21 +14,41 @@ export default function Caja() {
     // Resume State
     const [fechaApertura, setFechaApertura] = useState<string>('');
     const [saldoInicial, setSaldoInicial] = useState<number>(0);
-    const [ingresos, setIngresos] = useState<number>(0);
+    
+    // Ingresos
+    const [ingresosTotales, setIngresosTotales] = useState<number>(0);
     const [ingresosEfvo, setIngresosEfvo] = useState<number>(0);
     const [ingresosTransf, setIngresosTransf] = useState<number>(0);
     const [ingresosCheque, setIngresosCheque] = useState<number>(0);
     const [ingresosICheque, setIngresosICheque] = useState<number>(0);
-    const [egresos, setEgresos] = useState<number>(0);
+    
+    // Egresos
+    const [egresosTotales, setEgresosTotales] = useState<number>(0);
     const [egresosEfvo, setEgresosEfvo] = useState<number>(0);
+    const [egresosTransf, setEgresosTransf] = useState<number>(0);
     const [saldoReal, setSaldoReal] = useState<number>(0);
+    const [montoRetirar, setMontoRetirar] = useState<number>(0);
+    const [fondoCaja, setFondoCaja] = useState<number>(0);
     const [notasCierre, setNotasCierre] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [selectedCierre, setSelectedCierre] = useState<any>(null);
     const [detalleCierreOpen, setDetalleCierreOpen] = useState(false);
-
-    // Manual Expense State
-    const [egresoForm, setEgresoForm] = useState({ monto: '', concepto: '', categoria_gasto_id: '' });
+    
+    // ESTADO DEL TURNO REAL (Independiente de filtros)
+    const [turnoActual, setTurnoActual] = useState({
+        saldoInicial: 0,
+        ingresosEfvo: 0,
+        ingresosTotales: 0,
+        ingresosTransf: 0,
+        ingresosCheque: 0,
+        ingresosICheque: 0,
+        egresosEfvo: 0,
+        egresosTotales: 0,
+        egresosTransf: 0,
+        balanceFisico: 0,
+        fechaApertura: ''
+    });
+    const [egresoForm, setEgresoForm] = useState({ monto: '', concepto: '', categoria_gasto_id: '', forma_pago: 'efectivo' });
     const [categoriasGasto, setCategoriasGasto] = useState<any[]>([]);
 
     // Filter State
@@ -40,7 +60,7 @@ export default function Caja() {
 
     useEffect(() => {
         fetchCajaResumen();
-    }, [dateRange]); // Refetch when date filter changes
+    }, [dateRange]);
 
     const fetchCajaResumen = async () => {
         setLoading(true);
@@ -52,232 +72,252 @@ export default function Caja() {
 
             if (!isCustomDate) {
                 // Modo Turno Actual
-                try {
-                    const { data: cierres } = await supabase
-                        .from('caja_cierres')
-                        .select('*')
-                        .order('fecha_cierre', { ascending: false })
-                        .limit(1);
+                const { data: cierres } = await supabase
+                    .from('caja_cierres')
+                    .select('*')
+                    .order('fecha_cierre', { ascending: false })
+                    .limit(1);
 
-                    if (cierres && cierres.length > 0) {
-                        fromDate = cierres[0].fecha_cierre;
-                        currentSaldoInicial = cierres[0].saldo_real; // El saldo final real del último cierre es mi inicial hoy
-                    }
-                } catch (err) {
-                    console.warn('Tabla caja_cierres no existe aún o hubo un error.', err);
+                if (cierres && cierres.length > 0) {
+                    fromDate = cierres[0].fecha_cierre;
+                    currentSaldoInicial = cierres[0].saldo_real;
                 }
 
-                // Si no hay cierre previo, usamos el inicio del día
                 if (!fromDate) {
                     const startOfDay = new Date();
                     startOfDay.setHours(0, 0, 0, 0);
-                    fromDate = format(new Date(), 'yyyy-MM-dd');
+                    fromDate = format(startOfDay, 'yyyy-MM-dd');
                 }
             } else {
-                // Modo filtro de fechas (ignora el cierre anterior)
-                if (dateRange.from) {
-                    fromDate = new Date(dateRange.from + 'T00:00:00').toISOString();
-                } else {
-                    fromDate = new Date(2000, 0, 1).toISOString(); // Origen de los tiempos si solo pone 'hasta'
-                }
-
-                if (dateRange.to) {
-                    toDate = new Date(dateRange.to + 'T23:59:59.999').toISOString();
-                }
-                currentSaldoInicial = 0; // Para reportes históricos no arrastramos saldo salvo que calculemos todo el historial
+                if (dateRange.from) fromDate = new Date(dateRange.from + 'T00:00:00').toISOString();
+                if (dateRange.to) toDate = new Date(dateRange.to + 'T23:59:59.999').toISOString();
+                currentSaldoInicial = 0;
             }
 
-            setFechaApertura(fromDate || format(new Date(), 'yyyy-MM-dd'));
+            setFechaApertura(fromDate || '');
             setSaldoInicial(currentSaldoInicial);
 
-            // 2. Traer Ingresos 
-            // NUEVO: Pagos explícitos (Efectivo/Transferencia)
-            let queryPagos = supabase
+            // 1. Ingresos y Egresos de EFECTIVO (Siempre por TURNO o Filtro)
+            const { data: pagosEfvoData } = await supabase
                 .from('pagos')
-                .select('id, monto, forma_pago, created_at, venta_id, fecha')
-                .gte('fecha', fromDate);
-            if (toDate) queryPagos = queryPagos.lte('fecha', toDate);
-            const { data: pagosData } = await queryPagos;
+                .select('monto')
+                .eq('forma_pago', 'efectivo')
+                .gte('created_at', fromDate)
+                .lte('created_at', toDate || new Date().toISOString());
 
-            const pagosRecibidos = (pagosData || []).filter(p => p.forma_pago === 'efectivo' || p.forma_pago === 'transferencia' || p.forma_pago === 'cheque' || p.forma_pago === 'icheque');
-
-            // LEGACY: Ventas cobradas en el momento (ventas históricas que no usaban la tabla pagos)
-            let queryVentas = supabase.from('ventas').select('id, total, saldo_pendiente, created_at, numero, estado, fecha').gte('fecha', fromDate);
-            if (toDate) queryVentas = queryVentas.lte('fecha', toDate);
-            const { data: ventasData } = await queryVentas;
-
-            const pagosAsociadosIds = new Set((pagosData || []).map(p => p.venta_id));
-            const ventasCobradasHistoricas = (ventasData || []).filter(v =>
-                v.saldo_pendiente === 0 &&
-                v.estado !== 'anulada' &&
-                !pagosAsociadosIds.has(v.id) // Solo si no está contada ya por la tabla de pagos
-            );
-
-            const ingresosEfvoVal = pagosRecibidos.filter(p => p.forma_pago === 'efectivo').reduce((acc, p) => acc + (p.monto || 0), 0) +
-                ventasCobradasHistoricas.reduce((acc, v) => acc + (v.total || 0), 0);
-            const ingresosTransfVal = pagosRecibidos.filter(p => p.forma_pago === 'transferencia').reduce((acc, p) => acc + (p.monto || 0), 0);
-            const ingresosChequeVal = pagosRecibidos.filter(p => p.forma_pago === 'cheque').reduce((acc, p) => acc + (p.monto || 0), 0);
-            const ingresosIChequeVal = pagosRecibidos.filter(p => p.forma_pago === 'icheque').reduce((acc, p) => acc + (p.monto || 0), 0);
-
-            setIngresosEfvo(ingresosEfvoVal);
-            setIngresosTransf(ingresosTransfVal);
-            setIngresosCheque(ingresosChequeVal);
-            setIngresosICheque(ingresosIChequeVal);
-            setIngresos(ingresosEfvoVal + ingresosTransfVal + ingresosChequeVal + ingresosIChequeVal);
-
-
-            // 3. Traer Egresos
-            // NUEVO: Pagos realizados a proveedores
-            let queryPagosProv = supabase
-                .from('pagos_proveedores')
-                .select('id, monto, forma_pago, created_at, compra_id, fecha')
-                .gte('fecha', fromDate);
-            if (toDate) queryPagosProv = queryPagosProv.lte('fecha', toDate);
-            const { data: pagosProvData } = await queryPagosProv;
-
-            const pagosRealizados = (pagosProvData || []).filter(p => p.forma_pago === 'efectivo' || p.forma_pago === 'transferencia');
-
-            // LEGACY: Compras pagadas (compras históricas que no están en cta. cte.)
-            let queryCompras = supabase.from('compras').select('id, total, created_at, nro_comprobante, estado, fecha').gte('fecha', fromDate);
-            if (toDate) queryCompras = queryCompras.lte('fecha', toDate);
-            const { data: comprasData } = await queryCompras;
-
-            let queryCtaCte = supabase.from('cuenta_corriente_proveedores').select('compra_id, fecha').gte('fecha', fromDate);
-            if (toDate) queryCtaCte = queryCtaCte.lte('fecha', toDate);
-            const { data: ctaCteProv } = await queryCtaCte;
-
-            const comprasEnCtaCteIds = new Set((ctaCteProv || []).map(c => c.compra_id));
-            const pagosProvAsociadosIds = new Set((pagosProvData || []).map(p => p.compra_id));
-
-            const comprasPagadasHistoricas = (comprasData || []).filter(c =>
-                !comprasEnCtaCteIds.has(c.id) &&
-                c.estado !== 'anulada' &&
-                !pagosProvAsociadosIds.has(c.id) // Evitar duplicar si justo tiene un registro en pagos_proveedores
-            );
-
-            // Gastos
-            let queryGastos = supabase
+            const { data: gastosEfvoData } = await supabase
                 .from('gastos')
-                .select('id, monto, created_at, concepto, fecha')
-                .gte('fecha', fromDate);
-            if (toDate) queryGastos = queryGastos.lte('fecha', toDate);
-            const { data: gastosData } = await queryGastos;
+                .select('monto')
+                .eq('forma_pago', 'efectivo')
+                .gte('created_at', fromDate)
+                .lte('created_at', toDate || new Date().toISOString());
 
-            const egresosEfvoVal = pagosRealizados.filter(p => p.forma_pago === 'efectivo').reduce((acc, p) => acc + (p.monto || 0), 0) +
-                comprasPagadasHistoricas.reduce((acc, c) => acc + (c.total || 0), 0) +
-                (gastosData || []).reduce((acc, g) => acc + (g.monto || 0), 0);
+            const iEfvo = (pagosEfvoData || []).reduce((acc, curr) => acc + Number(curr.monto), 0);
+            const eEfvo = (gastosEfvoData || []).reduce((acc, curr) => acc + Number(curr.monto), 0);
+
+            setIngresosEfvo(iEfvo);
+            setEgresosEfvo(eEfvo);
+
+            // 2. Cobros y Egresos DIGITALES (Siempre CONSOLIDADO TOTAL a menos que haya filtro de fecha)
+            let queryBancos = supabase
+                .from('pagos')
+                .select('id, monto, forma_pago, created_at')
+                .neq('forma_pago', 'efectivo');
             
-            const egresosTransfVal = pagosRealizados.filter(p => p.forma_pago === 'transferencia').reduce((acc, p) => acc + (p.monto || 0), 0);
+            let queryEgresosBancos = supabase
+                .from('gastos')
+                .select('id, monto, forma_pago, created_at')
+                .eq('forma_pago', 'transferencia');
 
-            setEgresosEfvo(egresosEfvoVal);
-            setEgresos(egresosEfvoVal + egresosTransfVal);
+            // Si hay filtro de fecha (dashboard), lo aplicamos. 
+            // Si no (modo turno), traemos los últimos 50 digitales para no sobrecargar.
+            if (isCustomDate) {
+                if (fromDate) queryBancos = queryBancos.gte('created_at', fromDate);
+                if (toDate) queryBancos = queryBancos.lte('created_at', toDate);
+                if (fromDate) queryEgresosBancos = queryEgresosBancos.gte('created_at', fromDate);
+                if (toDate) queryEgresosBancos = queryEgresosBancos.lte('created_at', toDate);
+            } else {
+                queryBancos = queryBancos.order('created_at', { ascending: false }).limit(50);
+                queryEgresosBancos = queryEgresosBancos.order('created_at', { ascending: false }).limit(50);
+            }
 
-            // Build the initial real balance just reflecting theoretical balance (CASH ONLY)
-            setSaldoReal(currentSaldoInicial + ingresosEfvoVal - egresosEfvoVal);
+            const { data: bancosData } = await queryBancos;
+            const { data: eBancosData } = await queryEgresosBancos;
+            
+            let iTransf = 0, iCheque = 0, iICheque = 0;
+            (bancosData || []).forEach(p => {
+                const m = Number(p.monto);
+                if (p.forma_pago === 'transferencia') iTransf += m;
+                else if (p.forma_pago === 'cheque_terceros' || p.forma_pago === 'cheque') iCheque += m;
+                else if (p.forma_pago === 'icheque') iICheque += m;
+            });
 
-            // Fetch generic timeline items
-            const allMovs = [
-                ...pagosRecibidos.map(p => ({
-                    tipo: 'ingreso',
-                    monto: p.monto,
-                    fecha: p.created_at,
-                    concepto: `COBRO DE VENTA (${p.forma_pago?.toUpperCase() || 'S/D'})`,
-                    forma_pago: p.forma_pago
-                })),
-                ...ventasCobradasHistoricas.map(v => ({
-                    tipo: 'ingreso',
-                    monto: v.total,
-                    fecha: v.created_at,
-                    concepto: `VENTA #${v.numero || v.id.substring(0, 6)} (EFECTIVO)`,
-                    forma_pago: 'efectivo'
-                })),
-                ...pagosRealizados.map(p => ({
-                    tipo: 'egreso',
-                    monto: p.monto,
-                    fecha: p.created_at,
-                    concepto: `PAGO A PROVEEDOR (${p.forma_pago?.toUpperCase() || 'S/D'})`,
-                    forma_pago: p.forma_pago
-                })),
-                ...comprasPagadasHistoricas.map(c => ({
-                    tipo: 'egreso',
-                    monto: c.total,
-                    fecha: c.created_at,
-                    concepto: `COMPRA #${c.nro_comprobante || c.id.substring(0, 6)} (EFECTIVO)`,
-                    forma_pago: 'efectivo'
-                })),
-                ...(gastosData || []).map(g => ({
-                    tipo: 'egreso',
-                    monto: g.monto,
-                    fecha: g.created_at,
-                    concepto: g.concepto || 'Gasto Operativo'
-                }))
-            ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+            const eTransf = (eBancosData || []).reduce((acc, curr) => acc + Number(curr.monto), 0);
 
-            setMovimientos(allMovs);
+            setIngresosTransf(iTransf);
+            setIngresosCheque(iCheque);
+            setIngresosICheque(iICheque);
+            setEgresosTransf(eTransf);
+            
+            setIngresosTotales(iEfvo + iTransf + iCheque + iICheque);
+            setEgresosTotales(eEfvo + eTransf);
 
-            // 4. Fetch History of Closures (Always the last 10)
-            const { data: cierresHist } = await supabase
+            // 3. Cálculo del Turno Actual (Para el modal de cierre)
+            // Esto siempre debe ser desde el último cierre hasta AHORA
+            setTurnoActual({
+                saldoInicial: currentSaldoInicial,
+                ingresosEfvo: iEfvo,
+                egresosEfvo: eEfvo,
+                balanceFisico: currentSaldoInicial + iEfvo - eEfvo,
+                fechaApertura: fromDate || '',
+                ingresosTotales: iEfvo + iTransf + iCheque + iICheque,
+                ingresosTransf: iTransf,
+                ingresosCheque: iCheque,
+                ingresosICheque: iICheque,
+                egresosTotales: eEfvo + eTransf,
+                egresosTransf: eTransf
+            });            // 4. Movimientos combinados para la lista (Basados en el contexto actual)
+            const combined = ([
+                ...(pagosEfvoData || []).map(p => ({ ...p, forma_pago: 'efectivo', tipo: 'ingreso', label: 'COBRO EFECTIVO' })),
+                ...(bancosData || []).map(p => ({ ...p, tipo: 'ingreso', label: `COBRO ${p.forma_pago.toUpperCase()}` })),
+                ...(gastosEfvoData || []).map(g => ({ ...g, forma_pago: 'efectivo', tipo: 'egreso', label: 'GASTO EFECTIVO' })),
+                ...(eBancosData || []).map(g => ({ ...g, forma_pago: 'transferencia', tipo: 'egreso', label: 'GASTO BANCARIO' }))
+            ] as any[]).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+            setMovimientos(combined);
+
+            // 4. Historial de Cierres (Enriquecimiento Manual para evitar errores de Join)
+            const { data: cierresRaw, error: hError } = await supabase
                 .from('caja_cierres')
                 .select('*')
                 .order('fecha_cierre', { ascending: false })
                 .limit(10);
-            setHistorialCierres(cierresHist || []);
+            
+            if (hError) {
+                console.error("Error cargando historial:", hError);
+                setHistorialCierres([]);
+            } else {
+                // Enriquecer con perfiles uno a uno (como en StockHistorial)
+                const cierresEnriquecidos = await Promise.all((cierresRaw || []).map(async (c) => {
+                    if (c.usuario_id) {
+                        const { data: prof } = await supabase
+                            .from('profiles')
+                            .select('nombre, apellido')
+                            .eq('id', c.usuario_id)
+                            .maybeSingle();
+                        return { ...c, profiles: prof };
+                    }
+                    return c;
+                }));
+                setHistorialCierres(cierresEnriquecidos);
+            }
 
-            // 5. Fetch Expense Categories
-            const { data: cats } = await supabase
-                .from('categorias_gasto')
+            // Categorias
+            const { data: catsData } = await supabase.from('categorias_gasto').select('*').order('nombre');
+            setCategoriasGasto(catsData || []);
+
+            // NUEVA LÓGICA: CALCULAR TURNO REAL PARA EL CIERRE (Independiente de filtros)
+            const { data: cierresData } = await supabase
+                .from('caja_cierres')
                 .select('*')
-                .eq('activo', true)
-                .order('nombre');
-            setCategoriasGasto(cats || []);
+                .order('fecha_cierre', { ascending: false })
+                .limit(1);
 
-        } catch (error) {
-            console.error("Error fetching balance data", error);
+            let realFrom = cierresData?.[0]?.fecha_cierre || null;
+            let realSaldoIni = cierresData?.[0]?.saldo_real || 0;
+
+            let queryActualPagos = supabase.from('pagos').select('monto, forma_pago');
+            let queryActualGastos = supabase.from('gastos').select('monto, forma_pago');
+            
+            if (realFrom) {
+                queryActualPagos = queryActualPagos.gte('created_at', realFrom);
+                queryActualGastos = queryActualGastos.gte('created_at', realFrom);
+            }
+
+            const [{ data: aPagos }, { data: aGastos }] = await Promise.all([
+                queryActualPagos,
+                queryActualGastos
+            ]);
+
+            let aIngEfvo = 0, aIngTot = 0, aEgrEfvo = 0, aEgrTot = 0;
+            let aIngTransf = 0, aIngCheque = 0, aIngICheque = 0, aEgrTransf = 0;
+
+            (aPagos || []).forEach(p => {
+                const m = Number(p.monto);
+                aIngTot += m;
+                if (p.forma_pago === 'efectivo') aIngEfvo += m;
+                else if (p.forma_pago === 'transferencia') aIngTransf += m;
+                else if (p.forma_pago === 'cheque_terceros') aIngCheque += m;
+                else if (p.forma_pago === 'icheque') aIngICheque += m;
+            });
+
+            (aGastos || []).forEach(g => {
+                const m = Number(g.monto);
+                aEgrTot += m;
+                if (g.forma_pago === 'efectivo') aEgrEfvo += m;
+                else if (g.forma_pago === 'transferencia') aEgrTransf += m;
+            });
+
+            setTurnoActual({
+                saldoInicial: realSaldoIni,
+                ingresosEfvo: aIngEfvo,
+                ingresosTotales: aIngTot,
+                ingresosTransf: aIngTransf,
+                ingresosCheque: aIngCheque,
+                ingresosICheque: aIngICheque,
+                egresosEfvo: aEgrEfvo,
+                egresosTotales: aEgrTot,
+                egresosTransf: aEgrTransf,
+                balanceFisico: realSaldoIni + aIngEfvo - aEgrEfvo,
+                fechaApertura: realFrom || ''
+            });
+
+        } catch (err) {
+            console.error(err);
         } finally {
             setLoading(false);
         }
     };
 
-    const saldoTeorico = saldoInicial + ingresosEfvo - egresosEfvo;
-    const diferencia = saldoReal - saldoTeorico;
-
-    const handleCierre = async () => {
+    const handleRealizarCierre = async () => {
+        // En el nuevo sistema, el usuario declara cuanto retira y cuanto deja
+        // La suma de ambos es lo que físicamente "había" en la caja.
+        const efectivoTotalDeclarado = Number(montoRetirar) + Number(fondoCaja);
+        
         setIsSaving(true);
         try {
+            // USAMOS LOS VALORES DEL TURNO REAL, NO LOS FILTRADOS
+            const saldoTeoricoFisico = turnoActual.balanceFisico;
+            const diferencia = efectivoTotalDeclarado - saldoTeoricoFisico;
+
+            const notaFinal = `RETIRO: $${montoRetirar.toLocaleString()} | FONDO: $${fondoCaja.toLocaleString()} ${notasCierre ? ' - ' + notasCierre : ''}`;
+
             const nuevoCierre = {
-                fecha_apertura: fechaApertura,
+                fecha_apertura: turnoActual.fechaApertura && turnoActual.fechaApertura !== 'Inicio de sistema' ? turnoActual.fechaApertura : new Date().toISOString(),
                 fecha_cierre: new Date().toISOString(),
-                saldo_inicial: saldoInicial,
-                total_ingresos: ingresos,
-                total_egresos: egresos,
-                total_efectivo: ingresosEfvo,
-                total_transferencia: ingresosTransf,
-                total_cheque: ingresosCheque,
-                total_icheque: ingresosICheque,
-                saldo_teorico: saldoTeorico,
-                saldo_real: saldoReal,
+                saldo_inicial: turnoActual.saldoInicial,
+                total_ingresos: turnoActual.ingresosTotales,
+                total_egresos: turnoActual.egresosTotales,
+                total_efectivo: turnoActual.ingresosEfvo,
+                total_transferencia: turnoActual.ingresosTransf,
+                total_cheque: turnoActual.ingresosCheque,
+                total_icheque: turnoActual.ingresosICheque,
+                saldo_teorico: saldoTeoricoFisico,
+                saldo_real: fondoCaja, // El saldo real que QUEDA para el próximo turno
                 diferencia: diferencia,
                 usuario_id: user?.id,
-                notas: notasCierre
+                notas: notaFinal
             };
 
             const { error } = await supabase.from('caja_cierres').insert([nuevoCierre]);
-
-            if (error) {
-                // If the error code tells us it doesn't exist, warn the user explicitly.
-                if (error.code === '42P01' || error.message.includes('No existe la relación')) {
-                    alert("Error: Aún no has creado la tabla 'caja_cierres' en la base de datos de Supabase. Sigue las instrucciones del chat.");
-                } else {
-                    alert("Error al guardar el cierre: " + error.message);
-                }
-                throw error;
-            }
+            if (error) throw error;
 
             alert("Cierre de caja guardado exitosamente.");
             setCierreModalOpen(false);
-            fetchCajaResumen(); // Refresca los saldos con el nuevo cierre
+            fetchCajaResumen();
         } catch (err) {
             console.error(err);
+            alert("Error al guardar el cierre");
         } finally {
             setIsSaving(false);
         }
@@ -294,7 +334,7 @@ export default function Caja() {
                 monto: Number(egresoForm.monto),
                 concepto: egresoForm.concepto.toUpperCase(),
                 categoria_gasto_id: egresoForm.categoria_gasto_id,
-                forma_pago: 'efectivo',
+                forma_pago: egresoForm.forma_pago,
                 fecha: new Date().toISOString().split('T')[0],
                 usuario_id: user?.id,
                 created_at: new Date().toISOString()
@@ -304,7 +344,7 @@ export default function Caja() {
 
             alert("Egreso registrado correctamente");
             setEgresoModalOpen(false);
-            setEgresoForm({ monto: '', concepto: '', categoria_gasto_id: '' });
+            setEgresoForm({ monto: '', concepto: '', categoria_gasto_id: '', forma_pago: 'efectivo' });
             fetchCajaResumen();
         } catch (err) {
             console.error(err);
@@ -324,421 +364,449 @@ export default function Caja() {
         );
     }
 
-    const isCustomDate = dateRange.from !== '' || dateRange.to !== '';
+    // Cálculos de Balance
+    const balanceFisico = saldoInicial + ingresosEfvo - egresosEfvo;
+    const balanceBancario = ingresosTransf + ingresosICheque - egresosTransf;
 
     return (
         <Layout>
-            <MainHeader title="Control de Caja y Balances">
-                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-500/20">Finanzas</span>
+            <MainHeader title="Balance y Control de Caja">
+                <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full border border-primary/20">Finanzas Globales</span>
             </MainHeader>
 
-            <div className="p-4 lg:p-8 max-w-[1600px] mx-auto w-full space-y-4 lg:space-y-6 pb-24 lg:pb-8">
-
+            <div className="p-4 lg:p-8 max-w-[1600px] mx-auto w-full space-y-6 pb-24 lg:pb-8">
+                
                 {/* Filtros */}
-                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl lg:rounded-[2rem] p-4 lg:p-6 shadow-sm flex flex-col lg:flex-row items-center gap-4 justify-between">
-                    <div>
-                        <h2 className="text-lg font-black tracking-tight flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary">calendar_month</span>
-                            Filtros de Balance
-                        </h2>
-                        <p className="text-xs text-slate-500 font-medium mt-1">Seleccioná un rango para ver operaciones pasadas o dejá vacío para el Turno Actual.</p>
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2rem] p-6 shadow-sm flex flex-col lg:flex-row items-center gap-6 justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-primary/10 p-3 rounded-2xl">
+                            <span className="material-symbols-outlined text-primary text-3xl">account_balance</span>
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black tracking-tight">Estado de Cuentas</h2>
+                            <p className="text-xs text-slate-500 font-medium">Control de flujos físico y digital</p>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-3 w-full md:w-auto">
-                        <div className="flex flex-col">
+                    <div className="flex items-center gap-4 w-full lg:w-auto">
+                        <div className="flex-1 lg:w-48">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 ml-1">Desde</label>
                             <input
                                 type="date"
-                                className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm font-bold rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-primary/50"
+                                className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-2 text-xs font-bold"
                                 value={dateRange.from}
                                 onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
                             />
                         </div>
-                        <div className="flex flex-col">
+                        <div className="flex-1 lg:w-48">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 ml-1">Hasta</label>
                             <input
                                 type="date"
-                                className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-sm font-bold rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-primary/50"
+                                className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-2 text-xs font-bold"
                                 value={dateRange.to}
                                 onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
                             />
                         </div>
-                        {isCustomDate && (
-                            <button
-                                onClick={() => setDateRange({ from: '', to: '' })}
-                                className="mt-5 p-2 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
-                                title="Limpiar Filtros"
-                            >
-                                <span className="material-symbols-outlined">close</span>
-                            </button>
-                        )}
+                        <button 
+                            onClick={() => setDateRange({ from: '', to: '' })}
+                            className="mt-5 h-[40px] px-3 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 text-slate-500 rounded-xl transition-all"
+                            title="Limpiar filtros"
+                        >
+                            <span className="material-symbols-outlined">restart_alt</span>
+                        </button>
                     </div>
                 </div>
 
-                {/* Balance Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-                    <div className="bg-white dark:bg-zinc-900 rounded-3xl lg:rounded-[2rem] p-5 lg:p-6 border border-slate-200 dark:border-zinc-800 shadow-sm relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 group-hover:-rotate-6 transition-transform duration-500">
-                            <span className="material-symbols-outlined text-6xl text-slate-500">account_balance_wallet</span>
+                {/* NUEVO: Balance Total de la Empresa */}
+                <div className="bg-gradient-to-br from-slate-900 to-zinc-900 dark:from-black dark:to-zinc-950 rounded-[3rem] p-8 lg:p-12 shadow-2xl border border-white/10 relative overflow-hidden mb-8">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-primary/20 rounded-full blur-[100px] -mr-48 -mt-48 animate-pulse"></div>
+                    <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+                        <div className="flex-1 text-center lg:text-left">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full border border-white/20 mb-6">
+                                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-white/70">Situación Patrimonial</span>
+                            </div>
+                            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-2">Capital Total de la Empresa</h2>
+                            <div className="flex items-baseline gap-4 justify-center lg:justify-start">
+                                <span className="text-4xl lg:text-6xl font-black text-white">$</span>
+                                <h1 className="text-5xl lg:text-7xl xl:text-8xl font-black text-white tracking-tighter leading-none">
+                                    {(balanceFisico + balanceBancario + ingresosCheque).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                    <span className="text-xl lg:text-3xl text-white/30 ml-4">ARS</span>
+                                </h1>
+                            </div>
                         </div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
-                            {isCustomDate ? 'Rango Analizado' : 'Apertura'}
-                        </p>
-                        <h3 className="text-xl font-black text-slate-800 dark:text-white mb-1">
-                            {isCustomDate && dateRange.from ? format(parseISO(dateRange.from), 'dd/MM/yyyy') : format(parseISO(fechaApertura), 'dd/MM/yyyy')}
-                            {isCustomDate && dateRange.to ? ` al ${format(parseISO(dateRange.to), 'dd/MM/yyyy')}` : ''}
-                        </h3>
-                        {!isCustomDate && (
-                            <p className="text-xs font-bold text-slate-500">{new Date(fechaApertura).toLocaleTimeString()}</p>
-                        )}
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto">
+                            <div className="bg-white/5 backdrop-blur-md p-6 rounded-3xl border border-white/10">
+                                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2">Efectivo</p>
+                                <p className="text-2xl font-black text-white">$ {balanceFisico.toLocaleString('es-AR')}</p>
+                            </div>
+                            <div className="bg-white/5 backdrop-blur-md p-6 rounded-3xl border border-white/10">
+                                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2">Bancos / Digital</p>
+                                <p className="text-2xl font-black text-white">$ {balanceBancario.toLocaleString('es-AR')}</p>
+                            </div>
+                            <div className="bg-white/5 backdrop-blur-md p-6 rounded-3xl border border-white/10">
+                                <p className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-2">Cheques Cartera</p>
+                                <p className="text-2xl font-black text-white">$ {ingresosCheque.toLocaleString('es-AR')}</p>
+                            </div>
+                        </div>
                     </div>
+                </div>
 
-                    <div className="bg-white dark:bg-zinc-900 rounded-3xl lg:rounded-[2rem] p-5 lg:p-6 border border-emerald-200 dark:border-emerald-900/30 shadow-sm flex flex-col justify-between">
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-2 flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[14px]">arrow_downward</span>
-                                Ingresos Totales
-                            </p>
-                            <h3 className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
-                                $ {ingresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                {/* Balances Principales */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Tarjeta Efectivo */}
+                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2.5rem] p-8 shadow-xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                            <span className="material-symbols-outlined text-8xl text-primary">payments</span>
+                        </div>
+                        <div className="relative z-10 space-y-6">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Caja Física (En Mano)</span>
+                            </div>
+                            <h3 className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter">
+                                $ {balanceFisico.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                             </h3>
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-emerald-50 dark:border-emerald-900/20 space-y-1">
-                            <div className="flex justify-between text-[10px] font-bold">
-                                <span className="text-slate-400 uppercase">Efvo/Trans:</span>
-                                <span className="text-emerald-600 dark:text-emerald-400">$ {(ingresosEfvo + ingresosTransf).toLocaleString('es-AR')}</span>
+                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-zinc-800">
+                                <div>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Cobros Efvo (+)</p>
+                                    <p className="text-sm font-black text-emerald-500">$ {ingresosEfvo.toLocaleString('es-AR')}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Pagos Efvo (-)</p>
+                                    <p className="text-sm font-black text-rose-500">$ {egresosEfvo.toLocaleString('es-AR')}</p>
+                                </div>
                             </div>
-                            <div className="flex justify-between text-[10px] font-bold">
-                                <span className="text-slate-400 uppercase">Cheque:</span>
-                                <span className="text-amber-500">$ {ingresosCheque.toLocaleString('es-AR')}</span>
-                            </div>
-                            <div className="flex justify-between text-[10px] font-bold">
-                                <span className="text-slate-400 uppercase">iCheque:</span>
-                                <span className="text-rose-500">$ {ingresosICheque.toLocaleString('es-AR')}</span>
-                            </div>
+                            <button 
+                                onClick={() => setCierreModalOpen(true)}
+                                className="w-full bg-slate-900 dark:bg-white dark:text-zinc-900 text-white font-black py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                <span className="material-symbols-outlined">point_of_sale</span>
+                                REALIZAR CIERRE DE CAJA
+                            </button>
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-6 border border-rose-200 dark:border-rose-900/30 shadow-sm">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-2 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[14px]">arrow_upward</span>
-                            Egresos {isCustomDate ? 'del Período' : 'del Turno'}
-                        </p>
-                        <h3 className="text-3xl font-black text-rose-600 dark:text-rose-400">
-                            $ {egresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                        </h3>
-                    </div>
-
-                    <div className="bg-primary rounded-3xl lg:rounded-[2rem] p-5 lg:p-6 text-white shadow-lg shadow-primary/20 flex flex-col justify-center">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-white/70 mb-2">
-                            Saldo Teórico (EFECTIVO)
-                        </p>
-                        <h3 className="text-3xl lg:text-4xl font-black tracking-tighter">
-                            $ {saldoReal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                        </h3>
-                        <p className="text-[10px] font-bold text-white/50 mt-2 uppercase tracking-widest">
-                            Saldo físico estimado en caja
-                        </p>
+                    {/* Tarjeta Bancaria */}
+                    <div className="bg-emerald-500 dark:bg-emerald-600 border border-emerald-400 dark:border-emerald-700 rounded-[2.5rem] p-8 shadow-xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-8 opacity-20 group-hover:scale-110 transition-transform text-white">
+                            <span className="material-symbols-outlined text-8xl">account_balance</span>
+                        </div>
+                        <div className="relative z-10 space-y-6">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-white"></span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Cuentas Digitales / Bancos</span>
+                            </div>
+                            <h3 className="text-5xl font-black text-white tracking-tighter">
+                                $ {balanceBancario.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                            </h3>
+                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/20">
+                                <div>
+                                    <p className="text-[9px] font-black text-white/60 uppercase mb-1">Transferencias Recibidas (+)</p>
+                                    <p className="text-sm font-black text-white">+ $ {(ingresosTransf + ingresosICheque).toLocaleString('es-AR')}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-black text-white/60 uppercase mb-1">Egresos Bancarios (-)</p>
+                                    <p className="text-sm font-black text-emerald-900">- $ {egresosTransf.toLocaleString('es-AR')}</p>
+                                </div>
+                            </div>
+                            <div className="bg-black/10 rounded-2xl p-4 flex items-center justify-between border border-white/10">
+                                <span className="text-[10px] font-black text-white/60 uppercase">Impacto en Turno</span>
+                                <span className="text-sm font-black text-white">Consolidado Digital</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {!isCustomDate && (
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-                        <button
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Botón de Egreso Rápido */}
+                    <div className="lg:col-span-1">
+                        <button 
                             onClick={() => setEgresoModalOpen(true)}
-                            className="bg-white dark:bg-zinc-800 text-rose-500 border border-rose-200 dark:border-rose-900/30 hover:scale-[1.02] sm:hover:scale-105 active:scale-95 transition-all outline-none font-black text-xs lg:text-sm uppercase tracking-widest rounded-xl px-6 lg:px-8 py-4 shadow-lg flex items-center justify-center gap-2"
+                            className="w-full h-full bg-rose-500 hover:bg-rose-600 text-white rounded-[2rem] p-8 flex flex-col items-center justify-center gap-4 transition-all hover:shadow-2xl hover:shadow-rose-500/30 group"
                         >
-                            <span className="material-symbols-outlined">money_off</span>
-                            Registrar Egreso
+                            <div className="bg-white/20 p-4 rounded-full group-hover:scale-110 transition-transform">
+                                <span className="material-symbols-outlined text-4xl">logout</span>
+                            </div>
+                            <div className="text-center">
+                                <span className="text-xl font-black block uppercase">Registrar Retiro / Gasto</span>
+                                <span className="text-[10px] font-bold opacity-80 uppercase tracking-widest italic">Sacar dinero de caja o banco</span>
+                            </div>
                         </button>
-                        <button
-                            onClick={() => setCierreModalOpen(true)}
-                            className="bg-slate-900 dark:bg-white text-white dark:text-zinc-900 hover:scale-[1.02] sm:hover:scale-105 active:scale-95 transition-all outline-none font-black text-xs lg:text-sm uppercase tracking-widest rounded-xl px-6 lg:px-8 py-4 shadow-lg flex items-center justify-center gap-2"
-                        >
-                            <span className="material-symbols-outlined">point_of_sale</span>
-                            Realizar Cierre
-                        </button>
-                        <p className="text-[10px] lg:text-xs text-slate-500 font-bold max-w-lg text-center sm:text-left">
-                            Al realizar el cierre, este saldo se guardará como Saldo Final y se tomará como Saldo Inicial para el siguiente turno.
-                        </p>
                     </div>
-                )}
 
+                    {/* Tabla de Medios de Pago */}
+                    <div className="lg:col-span-2 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2.5rem] p-8 shadow-sm overflow-hidden">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Desglose Detallado por Medio de Pago</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {[
+                                { label: 'Efectivo', ing: ingresosEfvo, egr: egresosEfvo, icon: 'payments', color: 'bg-emerald-500' },
+                                { label: 'Transferencia', ing: ingresosTransf, egr: egresosTransf, icon: 'sync_alt', color: 'bg-primary' },
+                                { label: 'iCheque', ing: ingresosICheque, egr: 0, icon: 'contactless', color: 'bg-indigo-500' },
+                                { label: 'Cheque Físico', ing: ingresosCheque, egr: 0, icon: 'description', color: 'bg-amber-500' },
+                            ].map((m) => (
+                                <div key={m.label} className="p-4 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl border border-slate-100 dark:border-zinc-800 hover:shadow-lg transition-shadow">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className={`p-2 rounded-xl ${m.color} text-white shadow-lg`}>
+                                            <span className="material-symbols-outlined text-base leading-none block">{m.icon}</span>
+                                        </div>
+                                        <span className="text-xs font-black uppercase tracking-tight">{m.label}</span>
+                                    </div>
+                                    <div className="flex justify-between items-end">
+                                        <div>
+                                            <span className="block text-[8px] font-bold text-slate-400 uppercase mb-1">Ingresos (+)</span>
+                                            <span className="text-sm font-black text-emerald-500">+${m.ing.toLocaleString('es-AR')}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="block text-[8px] font-bold text-slate-400 uppercase mb-1">Egresos (-)</span>
+                                            <span className="text-sm font-black text-rose-500">-${m.egr.toLocaleString('es-AR')}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
 
-                {/* Movimientos Table */}
-                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-sm mt-8">
-                    <div className="p-6 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30">
-                        <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary">receipt_long</span>
-                            Movimientos del Turno ({movimientos.length})
-                        </h3>
+                {/* Movimientos del Turno */}
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-sm">
+                    <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Movimientos del Período ({movimientos.length})</h4>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
-                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha y Hora</th>
-                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Concepto</th>
-                                    <th className="hidden md:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Tipo</th>
-                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Monto</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha y Hora</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Concepto</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Tipo</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Monto</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                                {movimientos.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
-                                            <span className="material-symbols-outlined text-4xl mb-2 block opacity-20">history</span>
-                                            <p className="font-bold text-sm">No hay flujos de efectivo en este turno</p>
+                                {movimientos.map((mov) => (
+                                    <tr key={`${mov.tipo}-${mov.id}`} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                        <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                                            {format(parseISO(mov.created_at), 'dd/MM/yyyy, HH:mm:ss')}
+                                        </td>
+                                        <td className="px-6 py-4 text-xs font-black uppercase tracking-tighter">
+                                            {mov.label}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                                mov.tipo === 'ingreso' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+                                            }`}>
+                                                {mov.tipo}
+                                            </span>
+                                        </td>
+                                        <td className={`px-6 py-4 text-right text-sm font-black ${
+                                            mov.tipo === 'ingreso' ? 'text-emerald-600' : 'text-rose-600'
+                                        }`}>
+                                            {mov.tipo === 'ingreso' ? '+' : '-'} $ {Number(mov.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                                         </td>
                                     </tr>
-                                ) : (
-                                    movimientos.map((m, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                                            <td className="px-4 md:px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">
-                                                {new Date(m.fecha).toLocaleString()}
-                                            </td>
-                                            <td className="px-4 md:px-6 py-4">
-                                                <div className="font-black text-slate-900 dark:text-white uppercase tracking-tighter line-clamp-2 md:line-clamp-none">
-                                                    {m.concepto}
-                                                </div>
-                                            </td>
-                                            <td className="hidden md:table-cell px-4 md:px-6 py-4">
-                                                <span className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest ${m.tipo === 'ingreso' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                                    : 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
-                                                    }`}>
-                                                    {m.tipo}
-                                                </span>
-                                            </td>
-                                            <td className={`px-4 md:px-6 py-4 text-right text-sm font-black whitespace-nowrap ${m.tipo === 'ingreso' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                                                }`}>
-                                                {m.tipo === 'ingreso' ? '+' : '-'} $ {m.monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
+                                ))}
                             </tbody>
                         </table>
                     </div>
                 </div>
 
                 {/* Historial de Cierres */}
-                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-sm mt-8">
-                    <div className="p-6 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30">
-                        <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary">history</span>
-                            Historial de Últimos Cierres
-                        </h3>
+                <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-sm">
+                    <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Historial de Cierres Recientes</h4>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
-                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha Cierre</th>
-                                    <th className="hidden sm:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Efectivo</th>
-                                    <th className="hidden lg:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Transferencia</th>
-                                    <th className="hidden lg:table-cell px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Cheques (F/D)</th>
-                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Total General</th>
-                                    <th className="px-4 md:px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Acciones</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha Cierre</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Responsable</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Saldo Real (Fondo)</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Diferencia</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Acción</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                                {historialCierres.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={6} className="px-6 py-8 text-center text-slate-400 text-xs font-bold">
-                                            No hay cierres registrados aún
+                                {historialCierres.map((cierre) => (
+                                    <tr key={cierre.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
+                                        <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                                            {format(parseISO(cierre.fecha_cierre), 'dd/MM/yyyy, HH:mm')}
+                                        </td>
+                                        <td className="px-6 py-4 text-xs font-black uppercase tracking-tighter">
+                                            {cierre.profiles ? `${cierre.profiles.nombre} ${cierre.profiles.apellido}` : 'SISTEMA / NO ASIGNADO'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right text-sm font-black text-primary">
+                                            $ {Number(cierre.saldo_real).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                        </td>
+                                        <td className={`px-6 py-4 text-right text-sm font-black ${
+                                            cierre.diferencia === 0 ? 'text-emerald-600' : 'text-amber-600'
+                                        }`}>
+                                            $ {Number(cierre.diferencia).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <button 
+                                                onClick={() => {
+                                                    setSelectedCierre(cierre);
+                                                    setDetalleCierreOpen(true);
+                                                }}
+                                                className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-400 hover:bg-primary hover:text-white transition-all inline-flex items-center justify-center"
+                                            >
+                                                <span className="material-symbols-outlined text-sm">visibility</span>
+                                            </button>
                                         </td>
                                     </tr>
-                                ) : (
-                                    historialCierres.map((c, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
-                                            <td className="px-4 md:px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">
-                                                {new Date(c.fecha_cierre).toLocaleString()}
-                                            </td>
-                                            <td className="hidden sm:table-cell px-4 md:px-6 py-4 text-center">
-                                                <div className="text-xs font-black text-slate-900 dark:text-white">$ {c.saldo_real?.toLocaleString('es-AR')}</div>
-                                                <div className="text-[9px] text-slate-400 font-bold uppercase">Sist: ${c.saldo_teorico?.toLocaleString('es-AR')}</div>
-                                            </td>
-                                            <td className="hidden lg:table-cell px-4 md:px-6 py-4 text-center text-xs font-black text-blue-500">
-                                                $ {(c.total_transferencia || 0).toLocaleString('es-AR')}
-                                            </td>
-                                            <td className="hidden lg:table-cell px-4 md:px-6 py-4 text-center text-xs font-black text-amber-500">
-                                                $ {( (c.total_cheque || 0) + (c.total_icheque || 0) ).toLocaleString('es-AR')}
-                                            </td>
-                                            <td className="px-4 md:px-6 py-4 text-center text-xs font-black text-slate-700 dark:text-slate-200">
-                                                $ {c.total_ingresos?.toLocaleString('es-AR')}
-                                            </td>
-                                            <td className="px-4 md:px-6 py-4 text-right">
-                                                <button 
-                                                    onClick={() => { setSelectedCierre(c); setDetalleCierreOpen(true); }}
-                                                    className="p-2 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-lg text-slate-600 dark:text-slate-400 transition-all"
-                                                >
-                                                    <span className="material-symbols-outlined text-[18px]">visibility</span>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
+                                ))}
+                                {historialCierres.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center">
+                                            <span className="material-symbols-outlined text-slate-200 text-5xl mb-2">history</span>
+                                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">No hay cierres registrados aún</p>
+                                        </td>
+                                    </tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
                 </div>
+            </div>
 
-                {/* Cierre Modal */}
-                {cierreModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                        <div className="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
-                                <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-primary">point_of_sale</span>
-                                    Cerrar Caja
-                                </h2>
-                                <button onClick={() => setCierreModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                                    <span className="material-symbols-outlined">close</span>
-                                </button>
+            {/* Modal Cierre */}
+            {cierreModalOpen && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800">
+                        <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-900 text-white">
+                            <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+                                <span className="material-symbols-outlined">point_of_sale</span>
+                                Cierre de Caja
+                            </h2>
+                            <button onClick={() => setCierreModalOpen(false)} className="text-white/50 hover:text-white">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div className="bg-primary/5 p-6 rounded-3xl border border-primary/10">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Saldo Teórico (Turno Actual)</p>
+                                <p className="text-4xl font-black text-primary">$ {turnoActual.balanceFisico.toLocaleString('es-AR')}</p>
+                                <p className="text-[8px] font-bold text-slate-400 mt-2 uppercase tracking-tighter italic">
+                                    Calculado desde: {turnoActual.fechaApertura && turnoActual.fechaApertura !== 'Inicio de sistema' 
+                                        ? format(parseISO(turnoActual.fechaApertura), 'dd/MM/yyyy HH:mm') 
+                                        : 'Primera apertura'}
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 text-left block">Monto a Retirar ($)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                        <input
+                                            type="number"
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-8 py-4 font-black text-xl text-primary focus:border-primary focus:ring-0 transition-all outline-none"
+                                            value={montoRetirar}
+                                            onChange={(e) => setMontoRetirar(Number(e.target.value))}
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-1 text-left block">Fondo de Caja (Se queda)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                        <input
+                                            type="number"
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-8 py-4 font-black text-xl text-primary focus:border-primary focus:ring-0 transition-all outline-none"
+                                            value={fondoCaja}
+                                            onChange={(e) => setFondoCaja(Number(e.target.value))}
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
-                            <div className="p-6 space-y-6">
-                                <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 p-4 rounded-2xl flex gap-3">
-                                    <span className="material-symbols-outlined text-amber-500">info</span>
-                                    <p className="text-xs text-amber-800 dark:text-amber-200 font-bold leading-relaxed">
-                                        El monto que ingreses aquí como <span className="underline">Saldo Real</span> será el efectivo que el sistema asumirá que queda disponible para comenzar el siguiente turno.
+                            <div className={`p-4 rounded-2xl border-2 flex items-center justify-between ${
+                                Math.abs((Number(montoRetirar) + Number(fondoCaja)) - turnoActual.balanceFisico) < 1 
+                                ? 'bg-emerald-50 border-emerald-100 text-emerald-600'
+                                : 'bg-amber-50 border-amber-100 text-amber-600'
+                            }`}>
+                                <div className="text-left">
+                                    <p className="text-[10px] font-black uppercase">Diferencia de Arqueo</p>
+                                    <p className="text-xl font-black">
+                                        $ {((Number(montoRetirar) + Number(fondoCaja)) - turnoActual.balanceFisico).toLocaleString('es-AR')}
                                     </p>
                                 </div>
-
-                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Efectivo Inicial</p>
-                                        <p className="font-bold">$ {saldoInicial.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
-                                    </div>
-                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-primary/20">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Efvo. Teórico</p>
-                                        <p className="font-black text-lg text-primary">$ {saldoTeorico.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
-                                    </div>
-                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Transferencias</p>
-                                        <p className="font-black text-lg text-blue-500">$ {ingresosTransf.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
-                                    </div>
-                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-1">Cheque</p>
-                                        <p className="font-black text-lg text-amber-600">$ {ingresosCheque.toLocaleString('es-AR')}</p>
-                                    </div>
-                                    <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">iCheque</p>
-                                        <p className="font-black text-lg text-rose-600">$ {ingresosICheque.toLocaleString('es-AR')}</p>
-                                    </div>
-                                    <div className="bg-slate-900 dark:bg-zinc-100 p-4 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 mb-1">Total Cobrado (Turno)</p>
-                                        <p className="font-black text-lg text-white dark:text-zinc-900">$ {ingresos.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Recuento de Arqueo Físico (Saldo Real)</label>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-2xl pl-10 pr-4 py-4 text-2xl font-black text-slate-900 dark:text-white focus:ring-2 focus:ring-primary/50"
-                                            value={saldoReal}
-                                            onChange={(e) => setSaldoReal(Number(e.target.value) || 0)}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className={`p-4 rounded-2xl flex items-center justify-between ${diferencia === 0 ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800' :
-                                    diferencia > 0 ? 'bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800' :
-                                        'bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-800'
-                                    }`}>
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Diferencia de Arqueo</p>
-                                        <p className={`font-black ${diferencia === 0 ? 'text-emerald-600' : diferencia > 0 ? 'text-blue-600' : 'text-rose-600'}`}>
-                                            {diferencia === 0 ? 'Caja Cuadrada' :
-                                                diferencia > 0 ? `Sobrante: $${diferencia}` : `Faltante: $${Math.abs(diferencia)}`}
-                                        </p>
-                                    </div>
-                                    <span className="material-symbols-outlined text-4xl opacity-20">
-                                        {diferencia === 0 ? 'verified' : 'warning'}
-                                    </span>
-                                </div>
-
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Observaciones (Opcional)</label>
-                                    <textarea
-                                        className="w-full bg-slate-50 dark:bg-zinc-800/50 border-none rounded-2xl p-4 text-sm font-bold focus:ring-2 focus:ring-primary/50 resize-none h-24"
-                                        placeholder="Motivo de la diferencia, billetes falsos, vales..."
-                                        value={notasCierre}
-                                        onChange={(e) => setNotasCierre(e.target.value)}
-                                    ></textarea>
+                                <div className="text-right">
+                                    <p className="text-[8px] font-bold uppercase opacity-60 text-right">Total Contado</p>
+                                    <p className="text-sm font-black">$ {(Number(montoRetirar) + Number(fondoCaja)).toLocaleString('es-AR')}</p>
                                 </div>
                             </div>
 
-                            <div className="p-6 border-t border-slate-100 dark:border-zinc-800 flex gap-4 bg-slate-50/50 dark:bg-zinc-800/30">
-                                <button
-                                    onClick={() => setCierreModalOpen(false)}
-                                    className="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-all"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    onClick={handleCierre}
-                                    disabled={isSaving}
-                                    className="flex-1 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-sm py-3 rounded-xl shadow-lg flex justify-center items-center gap-2 transition-all disabled:opacity-50"
-                                >
-                                    {isSaving ? (
-                                        <div className="size-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                                    ) : (
-                                        <>
-                                            <span className="material-symbols-outlined">save</span>
-                                            Confirmar Cierre de Caja
-                                        </>
-                                    )}
-                                </button>
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 ml-1 text-left block mb-2">Observaciones</label>
+                                <textarea
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm text-slate-600 focus:border-primary focus:ring-0 transition-all outline-none min-h-[80px]"
+                                    value={notasCierre}
+                                    onChange={(e) => setNotasCierre(e.target.value)}
+                                    placeholder="Detalles sobre sobrantes, faltantes o aclaraciones..."
+                                />
                             </div>
+
+                            <button
+                                onClick={handleRealizarCierre}
+                                disabled={isSaving}
+                                className="w-full bg-slate-900 dark:bg-white dark:text-zinc-900 text-white font-black py-5 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isSaving ? 'GUARDANDO...' : 'CONFIRMAR Y CERRAR TURNO'}
+                            </button>
                         </div>
                     </div>
-                )}
-                {/* Egreso Modal */}
-                {egresoModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                        <div className="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
-                            <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
-                                <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-rose-500">money_off</span>
-                                    Registrar Egreso
-                                </h2>
-                                <button onClick={() => setEgresoModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                                    <span className="material-symbols-outlined">close</span>
-                                </button>
-                            </div>
+                </div>
+            )}
 
-                            <div className="p-6 space-y-4">
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2 text-left">Monto a Retirar</label>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl pl-10 pr-4 py-3 font-black text-slate-900 dark:text-white"
-                                            placeholder="0.00"
-                                            value={egresoForm.monto}
-                                            onChange={(e) => setEgresoForm(prev => ({ ...prev, monto: e.target.value }))}
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2 text-left">Concepto / Motivo</label>
+            {/* Modal Egreso */}
+            {egresoModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-rose-500 text-white">
+                            <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+                                <span className="material-symbols-outlined">outbox</span>
+                                Registrar Retiro / Gasto
+                            </h2>
+                            <button onClick={() => setEgresoModalOpen(false)} className="text-white/50 hover:text-white transition-colors">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2 text-left">Monto a Retirar / Gastar</label>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-xl">$</span>
                                     <input
-                                        type="text"
-                                        className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-3 font-bold text-slate-900 dark:text-white placeholder:text-slate-400 uppercase"
-                                        placeholder="Ej: RETIRO DE DUEÑO, PAGO DE LUZ..."
-                                        value={egresoForm.concepto}
-                                        onChange={(e) => setEgresoForm(prev => ({ ...prev, concepto: e.target.value }))}
+                                        type="number"
+                                        className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl pl-10 pr-4 py-4 font-black text-2xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-rose-500/50 transition-all"
+                                        placeholder="0.00"
+                                        value={egresoForm.monto}
+                                        onChange={(e) => setEgresoForm(prev => ({ ...prev, monto: e.target.value }))}
                                     />
                                 </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2 text-left">Concepto / Motivo Detallado</label>
+                                <input
+                                    type="text"
+                                    className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-4 font-bold text-slate-900 dark:text-white placeholder:text-slate-400 uppercase outline-none focus:ring-2 focus:ring-rose-500/50"
+                                    placeholder="Ej: RETIRO DE DUEÑO, PAGO DE LUZ..."
+                                    value={egresoForm.concepto}
+                                    onChange={(e) => setEgresoForm(prev => ({ ...prev, concepto: e.target.value }))}
+                                />
+                            </div>
 
+                            <div className="grid grid-cols-1 gap-4">
                                 <div>
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2 text-left">Categoría de Egreso</label>
                                     <select
-                                        className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-3 font-bold text-slate-900 dark:text-white outline-none focus:border-rose-500 transition-colors"
+                                        className="w-full bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-2xl px-4 py-4 font-bold text-slate-900 dark:text-white outline-none focus:border-rose-500 transition-colors"
                                         value={egresoForm.categoria_gasto_id}
                                         onChange={(e) => setEgresoForm(prev => ({ ...prev, categoria_gasto_id: e.target.value }))}
                                     >
@@ -747,110 +815,123 @@ export default function Caja() {
                                             <option key={cat.id} value={cat.id}>{cat.nombre}</option>
                                         ))}
                                     </select>
-                                    {categoriasGasto.length === 0 && (
-                                        <p className="text-[10px] text-rose-500 font-bold mt-1">
-                                            No hay categorías de gastos creadas. Por favor, crea una primero.
-                                        </p>
-                                    )}
                                 </div>
 
-                                <button
-                                    onClick={handleGuardarEgreso}
-                                    disabled={isSaving}
-                                    className="w-full bg-rose-500 hover:bg-rose-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-rose-500/20 transition-all flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
-                                >
-                                    {isSaving ? (
-                                        <div className="size-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    ) : (
-                                        <>
-                                            <span className="material-symbols-outlined">check_circle</span>
-                                            GUARDAR EGRESO
-                                        </>
-                                    )}
-                                </button>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2 text-left">Forma de Pago / Salida</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={() => setEgresoForm(prev => ({ ...prev, forma_pago: 'efectivo' }))}
+                                            className={`py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all flex flex-col items-center gap-1 ${
+                                                egresoForm.forma_pago === 'efectivo' 
+                                                ? 'bg-rose-500 border-rose-500 text-white shadow-xl shadow-rose-500/30' 
+                                                : 'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            <span className="material-symbols-outlined text-base">payments</span>
+                                            Efectivo
+                                        </button>
+                                        <button
+                                            onClick={() => setEgresoForm(prev => ({ ...prev, forma_pago: 'transferencia' }))}
+                                            className={`py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all flex flex-col items-center gap-1 ${
+                                                egresoForm.forma_pago === 'transferencia' 
+                                                ? 'bg-primary border-primary text-white shadow-xl shadow-primary/30' 
+                                                : 'bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-400 hover:bg-slate-100'
+                                            }`}
+                                        >
+                                            <span className="material-symbols-outlined text-base">sync_alt</span>
+                                            Transferencia
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
+
+                            <button
+                                onClick={handleGuardarEgreso}
+                                disabled={isSaving}
+                                className="w-full bg-slate-900 dark:bg-white dark:text-zinc-900 text-white font-black py-5 rounded-2xl shadow-2xl transition-all flex items-center justify-center gap-3 mt-4 disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
+                            >
+                                <span className="material-symbols-outlined">check_circle</span>
+                                {isSaving ? 'GUARDANDO...' : 'CONFIRMAR RETIRO / GASTO'}
+                            </button>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
+            {/* Modal Detalle Cierre */}
+            {detalleCierreOpen && selectedCierre && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-primary text-white">
+                            <div>
+                                <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+                                    <span className="material-symbols-outlined">receipt_long</span>
+                                    Detalle de Cierre
+                                </h2>
+                                <p className="text-[10px] font-bold opacity-60 uppercase tracking-widest mt-1">
+                                    Cerrado el {format(parseISO(selectedCierre.fecha_cierre), 'dd/MM/yyyy HH:mm')}
+                                </p>
+                            </div>
+                            <button onClick={() => setDetalleCierreOpen(false)} className="text-white/50 hover:text-white transition-colors">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
 
-                {/* Detalle Cierre Modal */}
-                {detalleCierreOpen && selectedCierre && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                        <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden border border-slate-200 dark:border-zinc-800">
-                            <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
-                                <div>
-                                    <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary">visibility</span>
-                                        Detalle de Cierre
-                                    </h2>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                        {new Date(selectedCierre.fecha_cierre).toLocaleString()}
+                        <div className="p-8 space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-100 dark:border-zinc-700">
+                                    <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Saldo Inicial</p>
+                                    <p className="text-lg font-black text-slate-600">$ {Number(selectedCierre.saldo_inicial).toLocaleString('es-AR')}</p>
+                                </div>
+                                <div className="p-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl border border-slate-100 dark:border-zinc-700">
+                                    <p className="text-[8px] font-black uppercase text-slate-400 mb-1">Efectivo Rendido</p>
+                                    <p className="text-lg font-black text-emerald-600">$ {Number(selectedCierre.total_efectivo).toLocaleString('es-AR')}</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center border-b border-slate-100 dark:border-zinc-800 pb-2">
+                                    <p className="text-[10px] font-black uppercase text-slate-400">Total Ingresos</p>
+                                    <p className="text-sm font-black text-emerald-600">$ {Number(selectedCierre.total_ingresos).toLocaleString('es-AR')}</p>
+                                </div>
+                                <div className="flex justify-between items-center border-b border-slate-100 dark:border-zinc-800 pb-2">
+                                    <p className="text-[10px] font-black uppercase text-slate-400">Total Egresos</p>
+                                    <p className="text-sm font-black text-rose-600">$ {Number(selectedCierre.total_egresos).toLocaleString('es-AR')}</p>
+                                </div>
+                                <div className="flex justify-between items-center border-b border-slate-100 dark:border-zinc-800 pb-2">
+                                    <p className="text-[10px] font-black uppercase text-slate-400">Transferencias</p>
+                                    <p className="text-sm font-black text-primary">$ {Number(selectedCierre.total_transferencia).toLocaleString('es-AR')}</p>
+                                </div>
+                                <div className="flex justify-between items-center border-b border-slate-100 dark:border-zinc-800 pb-2">
+                                    <p className="text-[10px] font-black uppercase text-slate-400">Diferencia de Arqueo</p>
+                                    <p className={`text-sm font-black ${selectedCierre.diferencia < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                        $ {Number(selectedCierre.diferencia).toLocaleString('es-AR')}
                                     </p>
                                 </div>
-                                <button onClick={() => setDetalleCierreOpen(false)} className="size-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 transition-colors">
-                                    <span className="material-symbols-outlined">close</span>
-                                </button>
                             </div>
 
-                            <div className="p-8 space-y-8">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-1">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saldo Inicial</p>
-                                        <p className="text-lg font-bold text-slate-700 dark:text-slate-300">$ {(selectedCierre.saldo_inicial || 0).toLocaleString('es-AR')}</p>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Cajero / Usuario</p>
-                                        <p className="text-lg font-bold text-slate-700 dark:text-slate-300">ADMIN</p>
-                                    </div>
+                            <div className="p-5 bg-primary/5 rounded-3xl border border-primary/10">
+                                <p className="text-[10px] font-black uppercase text-primary mb-1">Saldo que quedó en caja (Fondo)</p>
+                                <p className="text-3xl font-black text-primary">$ {Number(selectedCierre.saldo_real).toLocaleString('es-AR')}</p>
+                            </div>
+
+                            {selectedCierre.notas && (
+                                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                                    <p className="text-[8px] font-black uppercase text-amber-400 mb-1">Notas del Cierre</p>
+                                    <p className="text-xs font-bold text-amber-700 italic">"{selectedCierre.notas}"</p>
                                 </div>
+                            )}
 
-                                <div className="bg-slate-50 dark:bg-zinc-800/30 rounded-[2rem] p-6 space-y-4 border border-slate-100 dark:border-zinc-800">
-                                    <div className="flex justify-between items-center border-b border-slate-200 dark:border-zinc-700 pb-2">
-                                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">Efectivo Real (Arqueo)</span>
-                                        <span className="text-lg font-black text-slate-900 dark:text-white">$ {(selectedCierre.saldo_real || 0).toLocaleString('es-AR')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs font-bold">
-                                        <span className="text-slate-400 underline decoration-primary/30 decoration-2">Efectivo s/ Sistema:</span>
-                                        <span className="text-slate-600 dark:text-slate-400">$ {(selectedCierre.saldo_teorico || 0).toLocaleString('es-AR')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs font-bold">
-                                        <span className="text-slate-400 underline decoration-blue-500/30 decoration-2">Transferencias:</span>
-                                        <span className="text-blue-500">$ {(selectedCierre.total_transferencia || 0).toLocaleString('es-AR')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs font-bold">
-                                        <span className="text-slate-400 underline decoration-purple-500/30 decoration-2">Tarjetas:</span>
-                                        <span className="text-purple-500">$ {(selectedCierre.total_tarjeta || 0).toLocaleString('es-AR')}</span>
-                                    </div>
-                                    <div className="pt-2 flex justify-between items-center border-t border-slate-200 dark:border-zinc-700">
-                                        <span className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white text-primary">TOTAL RECAUDADO</span>
-                                        <span className="text-xl font-black text-primary">
-                                            $ {(selectedCierre.saldo_real + (selectedCierre.total_transferencia || 0) + (selectedCierre.total_tarjeta || 0)).toLocaleString('es-AR')}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {selectedCierre.notas && (
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block ml-1">Notas del Cierre</label>
-                                        <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-2xl text-xs font-bold text-amber-900 dark:text-amber-200 leading-relaxed">
-                                            {selectedCierre.notas}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="p-8 bg-slate-50 dark:bg-zinc-800/30 flex justify-end">
-                                <button
-                                    onClick={() => setDetalleCierreOpen(false)}
-                                    className="px-8 py-3 bg-slate-900 dark:bg-white text-white dark:text-zinc-900 rounded-xl font-black uppercase tracking-widest text-[10px] hover:scale-105 transition-all"
-                                >
-                                    Cerrar Ventana
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => setDetalleCierreOpen(false)}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl transition-all"
+                            >
+                                CERRAR DETALLE
+                            </button>
                         </div>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
         </Layout>
     );
 }

@@ -189,38 +189,9 @@ const ClienteDetalle: React.FC = () => {
 
             if (insertErr) throw insertErr;
 
-            // 2. CONCILIACIÓN INTELIGENTE (FIFO)
-            const { data: vPendientes } = await supabase
-                .from('ventas')
-                .select('id, saldo_pendiente, total')
-                .eq('cliente_id', id)
-                .gt('saldo_pendiente', 0)
-                .not('estado', 'in', '("presupuesto","cancelada","anulada")')
-                .order('fecha', { ascending: true });
-
-            if (vPendientes && vPendientes.length > 0) {
-                let v_reduction = -delta; // Si delta es positivo (más deuda), la reducción es negativa
-                
-                if (v_reduction > 0) {
-                    for (const v of vPendientes) {
-                        if (v_reduction <= 0) break;
-                        if (v_reduction >= v.saldo_pendiente) {
-                            v_reduction -= v.saldo_pendiente;
-                            await supabase.from('ventas').update({ saldo_pendiente: 0, total_pagado: v.total }).eq('id', v.id);
-                        } else {
-                            const nuevoS = v.saldo_pendiente - v_reduction;
-                            await supabase.from('ventas').update({ saldo_pendiente: nuevoS, total_pagado: v.total - nuevoS }).eq('id', v.id);
-                            v_reduction = 0;
-                        }
-                    }
-                } else if (v_reduction < 0) {
-                    const vMasNueva = vPendientes[vPendientes.length - 1];
-                    await supabase.from('ventas').update({ 
-                        saldo_pendiente: vMasNueva.saldo_pendiente + Math.abs(v_reduction) 
-                    }).eq('id', vMasNueva.id);
-                }
-            }
-
+            // El resto de la lógica (conciliación de facturas) ahora se maneja 
+            // automáticamente vía Trigger en la base de datos.
+            
             setShowAjusteModal(false);
             setNuevoSaldoReal('');
             setConceptoAjuste('Saldo Anterior');
