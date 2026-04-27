@@ -85,6 +85,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                     <span className="font-medium tracking-tight truncate">Productos</span>
                 </NavLink>
                 <NavLink
+                    to="/stock/historial"
+                    onClick={() => window.innerWidth < 1024 && onClose()}
+                    className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                        }`
+                    }
+                >
+                    <span className="material-symbols-outlined text-[22px] w-6 flex justify-center">history</span>
+                    <span className="font-medium tracking-tight truncate">Historial Stock</span>
+                </NavLink>
+                <NavLink
                     to="/ventas"
                     onClick={() => window.innerWidth < 1024 && onClose()}
                     className={({ isActive }) =>

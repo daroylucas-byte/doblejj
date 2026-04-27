@@ -14,6 +14,7 @@ import ProveedorDetalle from './pages/ProveedorDetalle';
 import NuevaCompra from './pages/NuevaCompra';
 import Caja from './pages/Caja';
 import Elaboracion from './pages/Elaboracion';
+import StockHistorial from './pages/StockHistorial';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading } = useAuthStore();
@@ -131,6 +132,12 @@ function App() {
         <Route path="/elaboracion" element={
           <ProtectedRoute>
             <Elaboracion />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/stock/historial" element={
+          <ProtectedRoute>
+            <StockHistorial />
           </ProtectedRoute>
         } />
 

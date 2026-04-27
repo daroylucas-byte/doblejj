@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import ProductoModal from '../components/ProductoModal';
@@ -28,6 +29,7 @@ interface Producto {
 }
 
 const Productos: React.FC = () => {
+    const navigate = useNavigate();
     const [productos, setProductos] = useState<Producto[]>([]);
     const [categorias, setCategorias] = useState<Categoria[]>([]);
     const [loading, setLoading] = useState(true);
@@ -218,12 +220,22 @@ const Productos: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-3 sm:px-6 py-4 text-center border-l border-slate-50 dark:border-zinc-800">
-                                                <button
-                                                    onClick={() => handleEdit(prod)}
-                                                    className="p-2 text-slate-400 hover:text-primary transition-all hover:bg-primary/10 rounded-lg group"
-                                                >
-                                                    <span className="material-symbols-outlined group-hover:scale-110 transition-transform">edit</span>
-                                                </button>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button
+                                                        onClick={() => navigate(`/stock/historial?id=${prod.id}`)}
+                                                        className="p-2 text-slate-400 hover:text-primary transition-all hover:bg-primary/10 rounded-lg group"
+                                                        title="Ver Historial de Stock"
+                                                    >
+                                                        <span className="material-symbols-outlined group-hover:scale-110 transition-transform text-sm sm:text-base">history</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleEdit(prod)}
+                                                        className="p-2 text-slate-400 hover:text-primary transition-all hover:bg-primary/10 rounded-lg group"
+                                                        title="Editar Producto"
+                                                    >
+                                                        <span className="material-symbols-outlined group-hover:scale-110 transition-transform text-sm sm:text-base">edit</span>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
