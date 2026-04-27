@@ -12,21 +12,17 @@ export default function Caja() {
     const [egresoModalOpen, setEgresoModalOpen] = useState(false);
 
     // Resume State
-    const [fechaApertura, setFechaApertura] = useState<string>('');
     const [saldoInicial, setSaldoInicial] = useState<number>(0);
     
     // Ingresos
-    const [ingresosTotales, setIngresosTotales] = useState<number>(0);
     const [ingresosEfvo, setIngresosEfvo] = useState<number>(0);
     const [ingresosTransf, setIngresosTransf] = useState<number>(0);
     const [ingresosCheque, setIngresosCheque] = useState<number>(0);
     const [ingresosICheque, setIngresosICheque] = useState<number>(0);
     
     // Egresos
-    const [egresosTotales, setEgresosTotales] = useState<number>(0);
     const [egresosEfvo, setEgresosEfvo] = useState<number>(0);
     const [egresosTransf, setEgresosTransf] = useState<number>(0);
-    const [saldoReal, setSaldoReal] = useState<number>(0);
     const [montoRetirar, setMontoRetirar] = useState<number>(0);
     const [fondoCaja, setFondoCaja] = useState<number>(0);
     const [notasCierre, setNotasCierre] = useState('');
@@ -94,7 +90,6 @@ export default function Caja() {
                 currentSaldoInicial = 0;
             }
 
-            setFechaApertura(fromDate || '');
             setSaldoInicial(currentSaldoInicial);
 
             // 1. Ingresos y Egresos de EFECTIVO (Siempre por TURNO o Filtro)

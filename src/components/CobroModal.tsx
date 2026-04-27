@@ -133,8 +133,6 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
         }
     };
 
-    const deudaTotal = ventasPendientes.reduce((sum, v) => sum + Number(v.saldo_pendiente), 0);
-
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
