@@ -222,7 +222,7 @@ const Productos: React.FC = () => {
                                             <td className="px-3 sm:px-6 py-4 text-center border-l border-slate-50 dark:border-zinc-800">
                                                 <div className="flex items-center justify-center gap-1">
                                                     <button
-                                                        onClick={() => navigate(`/stock/historial?id=${prod.id}`)}
+                                                        onClick={() => navigate(`/stock/historial?id=${prod.id}`)} // fixed quotes
                                                         className="p-2 text-slate-400 hover:text-primary transition-all hover:bg-primary/10 rounded-lg group"
                                                         title="Ver Historial de Stock"
                                                     >
