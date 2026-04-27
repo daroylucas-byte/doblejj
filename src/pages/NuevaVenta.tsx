@@ -59,6 +59,8 @@ const NuevaVenta: React.FC = () => {
     const [searchCliente, setSearchCliente] = useState('');
     const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
     const [clienteDropdown, setClienteDropdown] = useState(false);
+    const [saleSuccess, setSaleSuccess] = useState(false);
+    const [lastSaleData, setLastSaleData] = useState<any>(null);
 
     const productSearchRef = useRef<HTMLDivElement>(null);
     const clienteSearchRef = useRef<HTMLDivElement>(null);
@@ -228,37 +230,40 @@ const NuevaVenta: React.FC = () => {
                 });
             }
 
+            const pdfItems = cart.map(item => ({
+                id: '',
+                producto_id: item.id,
+                cantidad: item.cantidad,
+                precio_unitario: item.precio_unitario,
+                subtotal: item.subtotal,
+                productos: {
+                    id: item.id,
+                    nombre: item.nombre,
+                    codigo: item.codigo || undefined
+                }
+            }));
+
+            const pdfVenta = {
+                ...venta,
+                clientes: selectedCliente,
+                venta_items: pdfItems
+            };
+
+            setLastSaleData({ ...pdfVenta, pdfItems });
+            setSaleSuccess(true);
+
             try {
-                const pdfItems = cart.map(item => ({
-                    id: '',
-                    producto_id: item.id,
-                    cantidad: item.cantidad,
-                    precio_unitario: item.precio_unitario,
-                    subtotal: item.subtotal,
-                    productos: {
-                        id: item.id,
-                        nombre: item.nombre,
-                        codigo: item.codigo || undefined
-                    }
-                }));
-
-                const pdfVenta = {
-                    ...venta,
-                    clientes: selectedCliente,
-                    venta_items: pdfItems
-                };
-
                 generateSaleTicket(pdfVenta, pdfItems);
             } catch (pdfErr) {
                 console.error("Error generating PDF:", pdfErr);
             }
 
             alert('Venta confirmada con éxito!');
-            navigate('/ventas');
+            // navigate('/ventas'); // No navegamos automáticamente para dejar ver el botón de comprobante
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving sale:', error);
-            alert('Ocurrió un error al procesar la venta.');
+            alert(`Ocurrió un error al procesar la venta: ${error.message || 'Error desconocido'}`);
         } finally {
             setSaving(false);
         }
@@ -593,49 +598,72 @@ const NuevaVenta: React.FC = () => {
                     </div>
 
                     {/* Summary Section */}
-                    <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl transition-all relative overflow-hidden flex-1">
+                    <div className="bg-white dark:bg-zinc-900 p-6 xl:p-8 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl transition-all relative overflow-hidden flex-1 shrink-0 flex flex-col justify-between">
                         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                             <span className="material-symbols-outlined text-9xl">shopping_basket</span>
                         </div>
 
-                        <div className="space-y-4 mb-8">
+                        <div className="space-y-4 mb-6">
                             <div className="flex justify-between items-center text-slate-400">
                                 <span className="text-xs font-bold uppercase tracking-widest italic">Subtotal</span>
-                                <span className="font-black text-slate-900 dark:text-white">$ {subtotal.toLocaleString()}</span>
+                                <span className="font-black text-slate-900 dark:text-white whitespace-nowrap">$ {subtotal.toLocaleString()}</span>
                             </div>
                             <div className="flex justify-between items-center text-slate-400">
                                 <span className="text-xs font-bold uppercase tracking-widest italic">Descuento</span>
                                 <div className="flex items-center gap-2">
                                     <span className="text-[10px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded-full font-black">0%</span>
-                                    <span className="font-black text-slate-900 dark:text-white">$ 0</span>
+                                    <span className="font-black text-slate-900 dark:text-white whitespace-nowrap">$ 0</span>
                                 </div>
                             </div>
                             <div className="h-px bg-slate-100 dark:bg-zinc-800 my-4"></div>
-                            <div className="flex justify-between items-end">
-                                <span className="text-sm font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Total Final</span>
-                                <span className="text-5xl font-black text-primary">$ {total.toLocaleString()}</span>
+                            <div className="flex flex-wrap justify-between items-end gap-2">
+                                <span className="text-sm font-black uppercase tracking-[0.2em] text-slate-500 mb-1 xl:mb-2">Total Final</span>
+                                <span className="text-3xl xl:text-4xl 2xl:text-5xl font-black text-primary leading-none tracking-tight whitespace-nowrap">
+                                    $ {total.toLocaleString()}
+                                </span>
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-3 mt-auto">
-                            <button
-                                onClick={handleConfirmSale}
-                                disabled={saving || cart.length === 0}
-                                className="w-full py-5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black text-xl shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
-                            >
-                                {saving ? (
-                                    <div className="size-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                ) : (
-                                    <>
-                                        <span className="material-symbols-outlined text-3xl group-hover:rotate-12 transition-transform">check_circle</span>
-                                        CONFIRMAR VENTA
-                                    </>
-                                )}
-                            </button>
-                            <button className="w-full py-4 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-700 text-slate-500 dark:text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
-                                <span className="material-symbols-outlined text-xl">description</span>
-                                Generar Comprobante
-                            </button>
+                        <div className="flex flex-col gap-3 mt-auto relative z-10 pb-2">
+                            {!saleSuccess ? (
+                                <button
+                                    onClick={handleConfirmSale}
+                                    disabled={saving || cart.length === 0}
+                                    className="w-full py-4 xl:py-5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black text-lg xl:text-xl shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
+                                >
+                                    {saving ? (
+                                        <div className="size-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    ) : (
+                                        <>
+                                            <span className="material-symbols-outlined text-2xl xl:text-3xl group-hover:rotate-12 transition-transform">check_circle</span>
+                                            CONFIRMAR VENTA
+                                        </>
+                                    )}
+                                </button>
+                            ) : (
+                                <>
+                                    <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl mb-2 animate-in zoom-in-95 duration-300">
+                                        <div className="flex items-center gap-3 text-emerald-600">
+                                            <span className="material-symbols-outlined font-bold">check_circle</span>
+                                            <span className="text-xs font-black uppercase tracking-widest">¡Venta Exitosa!</span>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={() => generateSaleTicket(lastSaleData, lastSaleData.pdfItems)}
+                                        className="w-full py-4 bg-primary text-white rounded-2xl font-black text-lg shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
+                                    >
+                                        <span className="material-symbols-outlined text-2xl">description</span>
+                                        DESCARGAR COMPROBANTE
+                                    </button>
+                                    <button 
+                                        onClick={() => window.location.reload()}
+                                        className="w-full py-3 bg-slate-100 dark:bg-zinc-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:bg-slate-200"
+                                    >
+                                        <span className="material-symbols-outlined text-xl">add_shopping_cart</span>
+                                        NUEVA VENTA
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
