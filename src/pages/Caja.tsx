@@ -154,9 +154,6 @@ export default function Caja() {
             setIngresosICheque(iICheque);
             setEgresosTransf(eTransf);
             
-            setIngresosTotales(iEfvo + iTransf + iCheque + iICheque);
-            setEgresosTotales(eEfvo + eTransf);
-
             // 3. Cálculo del Turno Actual (Para el modal de cierre)
             // Esto siempre debe ser desde el último cierre hasta AHORA
             setTurnoActual({
