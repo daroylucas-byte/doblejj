@@ -148,7 +148,12 @@ const ProveedorDetalle: React.FC = () => {
         setProcesandoAjuste(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            const targetSaldo = Number(nuevoSaldoReal);
+            
+            // UI: Positive = Debt. DB: Negative = Debt.
+            // Por lo tanto, invertimos el valor ingresado por el usuario para guardarlo en la DB
+            const inputSaldo = Number(nuevoSaldoReal);
+            const targetSaldo = -inputSaldo; 
+            
             const currentSaldo = Number(proveedor.saldo_actual);
             const delta = targetSaldo - currentSaldo;
 
@@ -157,8 +162,10 @@ const ProveedorDetalle: React.FC = () => {
                 return;
             }
 
+            // Si el delta es positivo, significa que el saldo de la DB se hace "más positivo" (menos deuda o más crédito) -> PAGO
+            // Si el delta es negativo, significa que el saldo de la DB se hace "más negativo" (más deuda) -> CARGO
             const tipo: 'cargo' | 'pago' = delta > 0 ? 'pago' : 'cargo';
-            const monto = delta;
+            const monto = delta; // El monto lo guardamos con su signo original para que la matemática coincida
 
             const { error: insertErr } = await supabase
                 .from('cuenta_corriente_proveedores')
@@ -166,7 +173,7 @@ const ProveedorDetalle: React.FC = () => {
                     proveedor_id: id,
                     fecha: new Date().toISOString().split('T')[0],
                     tipo,
-                    concepto: conceptoAjuste || 'Saldo Anterior',
+                    concepto: conceptoAjuste || 'Ajuste de Saldo',
                     monto,
                     saldo_acumulado: targetSaldo,
                     usuario_id: user?.id
@@ -174,9 +181,17 @@ const ProveedorDetalle: React.FC = () => {
 
             if (insertErr) throw insertErr;
 
+            // Actualizar tabla de proveedores
+            const { error: updateErr } = await supabase
+                .from('proveedores')
+                .update({ saldo_actual: targetSaldo })
+                .eq('id', id);
+
+            if (updateErr) throw updateErr;
+
             setShowAjusteModal(false);
             setNuevoSaldoReal('');
-            setConceptoAjuste('Saldo Anterior');
+            setConceptoAjuste('Ajuste de Saldo');
             fetchData();
         } catch (error) {
             console.error('Error al ajustar saldo:', error);
@@ -281,12 +296,13 @@ const ProveedorDetalle: React.FC = () => {
                         </div>
 
                         {/* Balance Card */}
-                        <div className={`rounded-3xl p-6 text-white shadow-lg transition-all ${proveedor.saldo_actual < 0 ? 'bg-gradient-to-br from-red-600 to-red-800 shadow-red-500/20' : 'bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-emerald-500/20'}`}>
+                        {/* En la DB: Negativo es Deuda. En la UI: Positivo es Deuda */}
+                        <div className={`rounded-3xl p-6 text-white shadow-lg transition-all ${-proveedor.saldo_actual > 0 ? 'bg-gradient-to-br from-red-600 to-red-800 shadow-red-500/20' : 'bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-emerald-500/20'}`}>
                             <div className="flex justify-between items-start mb-4">
                                 <h3 className="text-[10px] font-black uppercase tracking-widest opacity-80">Saldo en Cuenta Cte</h3>
                                 <button 
                                     onClick={() => {
-                                        setNuevoSaldoReal(proveedor.saldo_actual.toString());
+                                        setNuevoSaldoReal((-proveedor.saldo_actual).toString());
                                         setShowAjusteModal(true);
                                     }}
                                     className="p-1 rounded-full bg-white/20 hover:bg-white/40 transition-colors"
@@ -296,8 +312,8 @@ const ProveedorDetalle: React.FC = () => {
                                 </button>
                             </div>
                             <div className="text-3xl font-black mb-2">$ {Math.abs(proveedor.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
-                            <div className={`text-[10px] font-bold uppercase tracking-widest ${proveedor.saldo_actual < 0 ? 'text-red-100' : 'text-emerald-100'}`}>
-                                {proveedor.saldo_actual < 0 ? 'Deuda a pagar' : 'A favor'}
+                            <div className={`text-[10px] font-bold uppercase tracking-widest ${-proveedor.saldo_actual > 0 ? 'text-red-100' : 'text-emerald-100'}`}>
+                                {-proveedor.saldo_actual > 0 ? 'Deuda a pagar' : 'A favor (Crédito)'}
                             </div>
                         </div>
 
@@ -382,24 +398,33 @@ const ProveedorDetalle: React.FC = () => {
                                 {activeTab === 'movimientos' && (
                                     <div className="space-y-6">
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
-                                            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1">Total Pagado (Debe)</p>
-                                                <p className="text-xl font-black text-emerald-700 dark:text-emerald-400">
-                                                    $ {movimientos.reduce((acc, m) => acc + (m.monto > 0 ? m.monto : 0), 0).toLocaleString()}
-                                                </p>
-                                            </div>
-                                            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-rose-600 mb-1">Total Compras (Haber)</p>
-                                                <p className="text-xl font-black text-rose-700 dark:text-rose-400">
-                                                    $ {Math.abs(movimientos.reduce((acc, m) => acc + (m.monto < 0 ? m.monto : 0), 0)).toLocaleString()}
-                                                </p>
-                                            </div>
-                                            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Balance de Período</p>
-                                                <p className="text-xl font-black text-slate-700 dark:text-zinc-300">
-                                                    $ {movimientos.reduce((acc, m) => acc + m.monto, 0).toLocaleString()}
-                                                </p>
-                                            </div>
+                                            {(() => {
+                                                const totalPagado = movimientos.reduce((acc, m) => acc + (['pago', 'nota_credito'].includes(m.tipo) ? Math.abs(m.monto) : 0), 0);
+                                                const totalCompras = movimientos.reduce((acc, m) => acc + (['cargo', 'nota_debito'].includes(m.tipo) ? Math.abs(m.monto) : 0), 0);
+                                                const balance = totalCompras - totalPagado; // Positivo = Deuda
+                                                return (
+                                                    <>
+                                                        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1">Total Pagado (Debe)</p>
+                                                            <p className="text-xl font-black text-emerald-700 dark:text-emerald-400">
+                                                                $ {totalPagado.toLocaleString()}
+                                                            </p>
+                                                        </div>
+                                                        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-rose-600 mb-1">Total Compras (Haber)</p>
+                                                            <p className="text-xl font-black text-rose-700 dark:text-rose-400">
+                                                                $ {totalCompras.toLocaleString()}
+                                                            </p>
+                                                        </div>
+                                                        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Balance de Período</p>
+                                                            <p className={`text-xl font-black ${balance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                                                {balance < 0 ? '-' : ''}$ {Math.abs(balance).toLocaleString()}
+                                                            </p>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div className="flex items-center justify-between">
@@ -441,8 +466,9 @@ const ProveedorDetalle: React.FC = () => {
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
                                                     {movimientos.map(m => {
-                                                        const isHaber = m.monto < 0 || m.tipo === 'cargo' || m.tipo === 'nota_debito';
-                                                        const isDebe = m.monto > 0 || m.tipo === 'pago' || m.tipo === 'nota_credito';
+                                                        const isHaber = ['cargo', 'nota_debito'].includes(m.tipo);
+                                                        const isDebe = ['pago', 'nota_credito'].includes(m.tipo);
+                                                        const saldoInvertido = -m.saldo_acumulado; // Para la UI, invertimos para que Deuda sea positivo
                                                         
                                                         return (
                                                             <tr key={m.id} className="text-sm group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10 transition-colors">
@@ -459,8 +485,8 @@ const ProveedorDetalle: React.FC = () => {
                                                                 <td className="py-3 text-right font-black text-slate-900 dark:text-white">
                                                                     {isHaber ? `$ ${Math.abs(m.monto).toLocaleString()}` : '-'}
                                                                 </td>
-                                                                <td className={`py-3 text-right font-black ${m.saldo_acumulado < 0 ? 'text-rose-500' : 'text-primary'}`}>
-                                                                    $ {Math.abs(m.saldo_acumulado).toLocaleString()}
+                                                                <td className={`py-3 text-right font-black ${saldoInvertido > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                                                    {saldoInvertido < 0 ? '- ' : ''}$ {Math.abs(saldoInvertido).toLocaleString()}
                                                                 </td>
                                                             </tr>
                                                         );
@@ -560,8 +586,8 @@ const ProveedorDetalle: React.FC = () => {
                             <div className="bg-primary/5 rounded-xl p-4 border border-primary/10">
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo Actual en Sistema</span>
-                                    <span className={`text-xs font-black ${proveedor.saldo_actual < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                                        $ {proveedor.saldo_actual.toLocaleString()}
+                                    <span className={`text-xs font-black ${-proveedor.saldo_actual > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                        $ {(-proveedor.saldo_actual).toLocaleString()}
                                     </span>
                                 </div>
                             </div>
@@ -583,7 +609,7 @@ const ProveedorDetalle: React.FC = () => {
                                         />
                                     </div>
                                     <p className="text-[9px] text-slate-400 font-bold italic ml-1">
-                                        * Ingresa el monto final que debemos al proveedor (usa "-" para deuda).
+                                        * Ingresa el monto final de DEUDA con el proveedor (usa "-" si es saldo a tu favor).
                                     </p>
                                 </div>
 
