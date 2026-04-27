@@ -95,14 +95,14 @@ export default function Caja() {
             // 1. Ingresos y Egresos de EFECTIVO (Siempre por TURNO o Filtro)
             const { data: pagosEfvoData } = await supabase
                 .from('pagos')
-                .select('monto')
+                .select('id, monto, created_at')
                 .eq('forma_pago', 'efectivo')
                 .gte('created_at', fromDate)
                 .lte('created_at', toDate || new Date().toISOString());
 
             const { data: gastosEfvoData } = await supabase
                 .from('gastos')
-                .select('monto')
+                .select('id, monto, created_at')
                 .eq('forma_pago', 'efectivo')
                 .gte('created_at', fromDate)
                 .lte('created_at', toDate || new Date().toISOString());
@@ -168,13 +168,18 @@ export default function Caja() {
                 ingresosICheque: iICheque,
                 egresosTotales: eEfvo + eTransf,
                 egresosTransf: eTransf
-            });            // 4. Movimientos combinados para la lista (Basados en el contexto actual)
+            });
+            // 4. Movimientos combinados para la lista (Basados en el contexto actual)
             const combined = ([
                 ...(pagosEfvoData || []).map(p => ({ ...p, forma_pago: 'efectivo', tipo: 'ingreso', label: 'COBRO EFECTIVO' })),
-                ...(bancosData || []).map(p => ({ ...p, tipo: 'ingreso', label: `COBRO ${p.forma_pago.toUpperCase()}` })),
+                ...(bancosData || []).map(p => ({ ...p, tipo: 'ingreso', label: `COBRO ${(p.forma_pago || 'digital').toUpperCase()}` })),
                 ...(gastosEfvoData || []).map(g => ({ ...g, forma_pago: 'efectivo', tipo: 'egreso', label: 'GASTO EFECTIVO' })),
                 ...(eBancosData || []).map(g => ({ ...g, forma_pago: 'transferencia', tipo: 'egreso', label: 'GASTO BANCARIO' }))
-            ] as any[]).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+            ] as any[]).sort((a, b) => {
+                const dateA = new Date(a.created_at || 0).getTime();
+                const dateB = new Date(b.created_at || 0).getTime();
+                return dateB - dateA;
+            });
 
             setMovimientos(combined);
 
@@ -579,7 +584,7 @@ export default function Caja() {
                                 {movimientos.map((mov) => (
                                     <tr key={`${mov.tipo}-${mov.id}`} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
                                         <td className="px-6 py-4 text-xs font-bold text-slate-500">
-                                            {format(parseISO(mov.created_at), 'dd/MM/yyyy, HH:mm:ss')}
+                                            {mov.created_at ? format(parseISO(mov.created_at), 'dd/MM/yyyy, HH:mm:ss') : 'S/F'}
                                         </td>
                                         <td className="px-6 py-4 text-xs font-black uppercase tracking-tighter">
                                             {mov.label}
