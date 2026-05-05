@@ -96,16 +96,24 @@ const ClienteDetalle: React.FC = () => {
             setVentas(ventasData || []);
 
             // 3. Fetch Current Account Movements (Filtered)
+            // Using the new view for dynamic balance calculation
             let movsQuery = supabase
-                .from('cuenta_corriente')
+                .from('vista_cuenta_corriente')
                 .select('id, fecha, tipo, concepto, monto, saldo_acumulado')
                 .eq('cliente_id', id);
 
             if (startDate) movsQuery = movsQuery.gte('fecha', startDate);
             if (endDate) movsQuery = movsQuery.lte('fecha', endDate);
 
+            // Order by created_at descending to show recent first in UI
             const { data: movsData } = await movsQuery.order('created_at', { ascending: false });
             setMovimientos(movsData || []);
+
+            // 3.1 Update client balance from the latest dynamic movement if no filters are active
+            // This ensures the top card shows the real dynamic balance
+            if (movsData && movsData.length > 0 && !startDate && !endDate) {
+                setCliente(prev => prev ? { ...prev, saldo_actual: movsData[0].saldo_acumulado } : null);
+            }
 
             // 4. Fetch Stats (Top Products) - Filtered by date
             let statsQuery = supabase

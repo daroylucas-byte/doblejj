@@ -90,16 +90,24 @@ const ProveedorDetalle: React.FC = () => {
             setCompras(purchasesData || []);
 
             // 3. Fetch Movements with optional date filtering
+            // Using the new view for dynamic balance calculation
             let movsQuery = supabase
-                .from('cuenta_corriente_proveedores')
+                .from('vista_cuenta_corriente_proveedores')
                 .select('*')
                 .eq('proveedor_id', id);
 
             if (startDate) movsQuery = movsQuery.gte('fecha', startDate);
             if (endDate) movsQuery = movsQuery.lte('fecha', endDate);
 
+            // Order by created_at descending to show recent first in UI
             const { data: movsData } = await movsQuery.order('created_at', { ascending: false });
             setMovimientos(movsData || []);
+
+            // 3.1 Update supplier balance from the latest dynamic movement if no filters are active
+            // This ensures the top card shows the real dynamic balance
+            if (movsData && movsData.length > 0 && !startDate && !endDate) {
+                setProveedor(prev => prev ? { ...prev, saldo_actual: movsData[0].saldo_acumulado } : null);
+            }
 
             // 4. Fetch Stats (Top Products Purchased from this Supplier)
             const { data: statsData } = await supabase
@@ -296,13 +304,13 @@ const ProveedorDetalle: React.FC = () => {
                         </div>
 
                         {/* Balance Card */}
-                        {/* En la DB: Negativo es Deuda. En la UI: Positivo es Deuda */}
-                        <div className={`rounded-3xl p-6 text-white shadow-lg transition-all ${-proveedor.saldo_actual > 0 ? 'bg-gradient-to-br from-red-600 to-red-800 shadow-red-500/20' : 'bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-emerald-500/20'}`}>
+                        {/* With the new view: Positive = Debt */}
+                        <div className={`rounded-3xl p-6 text-white shadow-lg transition-all ${proveedor.saldo_actual > 0 ? 'bg-gradient-to-br from-red-600 to-red-800 shadow-red-500/20' : 'bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-emerald-500/20'}`}>
                             <div className="flex justify-between items-start mb-4">
                                 <h3 className="text-[10px] font-black uppercase tracking-widest opacity-80">Saldo en Cuenta Cte</h3>
                                 <button 
                                     onClick={() => {
-                                        setNuevoSaldoReal((-proveedor.saldo_actual).toString());
+                                        setNuevoSaldoReal(proveedor.saldo_actual.toString());
                                         setShowAjusteModal(true);
                                     }}
                                     className="p-1 rounded-full bg-white/20 hover:bg-white/40 transition-colors"
@@ -312,8 +320,8 @@ const ProveedorDetalle: React.FC = () => {
                                 </button>
                             </div>
                             <div className="text-3xl font-black mb-2">$ {Math.abs(proveedor.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
-                            <div className={`text-[10px] font-bold uppercase tracking-widest ${-proveedor.saldo_actual > 0 ? 'text-red-100' : 'text-emerald-100'}`}>
-                                {-proveedor.saldo_actual > 0 ? 'Deuda a pagar' : 'A favor (Crédito)'}
+                            <div className={`text-[10px] font-bold uppercase tracking-widest ${proveedor.saldo_actual > 0 ? 'text-red-100' : 'text-emerald-100'}`}>
+                                {proveedor.saldo_actual > 0 ? 'Deuda a pagar' : 'A favor (Crédito)'}
                             </div>
                         </div>
 
@@ -468,7 +476,7 @@ const ProveedorDetalle: React.FC = () => {
                                                     {movimientos.map(m => {
                                                         const isHaber = ['cargo', 'nota_debito'].includes(m.tipo);
                                                         const isDebe = ['pago', 'nota_credito'].includes(m.tipo);
-                                                        const saldoInvertido = -m.saldo_acumulado; // Para la UI, invertimos para que Deuda sea positivo
+                                                        const saldo = m.saldo_acumulado; // La vista ya nos da el saldo con signo correcto (Positivo = Deuda)
                                                         
                                                         return (
                                                             <tr key={m.id} className="text-sm group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10 transition-colors">
@@ -485,8 +493,8 @@ const ProveedorDetalle: React.FC = () => {
                                                                 <td className="py-3 text-right font-black text-slate-900 dark:text-white">
                                                                     {isHaber ? `$ ${Math.abs(m.monto).toLocaleString()}` : '-'}
                                                                 </td>
-                                                                <td className={`py-3 text-right font-black ${saldoInvertido > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                                                    {saldoInvertido < 0 ? '- ' : ''}$ {Math.abs(saldoInvertido).toLocaleString()}
+                                                                <td className={`py-3 text-right font-black ${saldo > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                                                    {saldo < 0 ? '- ' : ''}$ {Math.abs(saldo).toLocaleString()}
                                                                 </td>
                                                             </tr>
                                                         );
