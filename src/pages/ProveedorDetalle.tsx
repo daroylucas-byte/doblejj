@@ -54,7 +54,7 @@ const ProveedorDetalle: React.FC = () => {
     const [movimientos, setMovimientos] = useState<MovimientoProveedor[]>([]);
     const [topProductos, setTopProductos] = useState<TopProductoProveedor[]>([]);
     const [loading, setLoading] = useState(true);
-    
+
     // Ajuste de Saldo State
     const [showAjusteModal, setShowAjusteModal] = useState(false);
     const [showPagoModal, setShowPagoModal] = useState(false);
@@ -99,14 +99,27 @@ const ProveedorDetalle: React.FC = () => {
             if (startDate) movsQuery = movsQuery.gte('fecha', startDate);
             if (endDate) movsQuery = movsQuery.lte('fecha', endDate);
 
-            // Order by created_at descending to show recent first in UI
-            const { data: movsData } = await movsQuery.order('created_at', { ascending: false });
+            // BUG 4 FIX: Order by fecha, created_at, id descending to match the window function inverse order
+            // This ensures the visual table order and balance calculation are consistent
+            const { data: movsData } = await movsQuery
+                .order('fecha', { ascending: false })
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: false });
             setMovimientos(movsData || []);
 
-            // 3.1 Update supplier balance from the latest dynamic movement if no filters are active
-            // This ensures the top card shows the real dynamic balance
-            if (movsData && movsData.length > 0 && !startDate && !endDate) {
-                setProveedor(prev => prev ? { ...prev, saldo_actual: movsData[0].saldo_acumulado } : null);
+            // BUG 2 FIX: Always fetch the absolute latest balance from the view, ignoring filters
+            // to ensure the lateral card always shows the real current status.
+            const { data: latestMovData } = await supabase
+                .from('vista_cuenta_corriente_proveedores')
+                .select('saldo_acumulado')
+                .eq('proveedor_id', id)
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (latestMovData) {
+                setProveedor(prev => prev ? { ...prev, saldo_actual: latestMovData.saldo_acumulado } : null);
             }
 
             // 4. Fetch Stats (Top Products Purchased from this Supplier)
@@ -156,12 +169,13 @@ const ProveedorDetalle: React.FC = () => {
         setProcesandoAjuste(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            
+
             // UI: Positive = Debt. DB: Negative = Debt.
             // Por lo tanto, invertimos el valor ingresado por el usuario para guardarlo en la DB
             const inputSaldo = Number(nuevoSaldoReal);
-            const targetSaldo = -inputSaldo; 
-            
+            const targetSaldo = -inputSaldo;
+
+            // BUG 2 Note: We still compare against the latest fetched balance to calculate the adjustment delta
             const currentSaldo = Number(proveedor.saldo_actual);
             const delta = targetSaldo - currentSaldo;
 
@@ -175,6 +189,7 @@ const ProveedorDetalle: React.FC = () => {
             const tipo: 'cargo' | 'pago' = delta > 0 ? 'pago' : 'cargo';
             const monto = delta; // El monto lo guardamos con su signo original para que la matemática coincida
 
+            // BUG 1 FIX: Removed 'saldo_acumulado' field as it's recalculated by the view
             const { error: insertErr } = await supabase
                 .from('cuenta_corriente_proveedores')
                 .insert([{
@@ -183,7 +198,6 @@ const ProveedorDetalle: React.FC = () => {
                     tipo,
                     concepto: conceptoAjuste || 'Ajuste de Saldo',
                     monto,
-                    saldo_acumulado: targetSaldo,
                     usuario_id: user?.id
                 }]);
 
@@ -308,7 +322,7 @@ const ProveedorDetalle: React.FC = () => {
                         <div className={`rounded-3xl p-6 text-white shadow-lg transition-all ${proveedor.saldo_actual > 0 ? 'bg-gradient-to-br from-red-600 to-red-800 shadow-red-500/20' : 'bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-emerald-500/20'}`}>
                             <div className="flex justify-between items-start mb-4">
                                 <h3 className="text-[10px] font-black uppercase tracking-widest opacity-80">Saldo en Cuenta Cte</h3>
-                                <button 
+                                <button
                                     onClick={() => {
                                         setNuevoSaldoReal(proveedor.saldo_actual.toString());
                                         setShowAjusteModal(true);
@@ -352,8 +366,8 @@ const ProveedorDetalle: React.FC = () => {
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-2">
                                         <label className="text-[9px] font-black text-slate-400 uppercase">Inicio</label>
-                                        <input 
-                                            type="date" 
+                                        <input
+                                            type="date"
                                             value={startDate}
                                             onChange={(e) => setStartDate(e.target.value)}
                                             className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 outline-none focus:border-primary transition-all"
@@ -361,15 +375,15 @@ const ProveedorDetalle: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <label className="text-[9px] font-black text-slate-400 uppercase">Fin</label>
-                                        <input 
-                                            type="date" 
+                                        <input
+                                            type="date"
                                             value={endDate}
                                             onChange={(e) => setEndDate(e.target.value)}
                                             className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 outline-none focus:border-primary transition-all"
                                         />
                                     </div>
                                     {(startDate || endDate) && (
-                                        <button 
+                                        <button
                                             onClick={() => { setStartDate(''); setEndDate(''); }}
                                             className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
                                             title="Limpiar filtros"
@@ -417,18 +431,24 @@ const ProveedorDetalle: React.FC = () => {
                                                             <p className="text-xl font-black text-emerald-700 dark:text-emerald-400">
                                                                 $ {totalPagado.toLocaleString()}
                                                             </p>
+                                                            {/* BUG 2: Contextual label when filtering */}
+                                                            {(startDate || endDate) && <p className="text-[8px] font-black uppercase text-emerald-500 mt-1">del período seleccionado</p>}
                                                         </div>
                                                         <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20">
                                                             <p className="text-[10px] font-black uppercase tracking-widest text-rose-600 mb-1">Total Compras (Haber)</p>
                                                             <p className="text-xl font-black text-rose-700 dark:text-rose-400">
                                                                 $ {totalCompras.toLocaleString()}
                                                             </p>
+                                                            {/* BUG 2: Contextual label when filtering */}
+                                                            {(startDate || endDate) && <p className="text-[8px] font-black uppercase text-rose-500 mt-1">del período seleccionado</p>}
                                                         </div>
                                                         <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700">
                                                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Balance de Período</p>
                                                             <p className={`text-xl font-black ${balance > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                                 {balance < 0 ? '-' : ''}$ {Math.abs(balance).toLocaleString()}
                                                             </p>
+                                                            {/* BUG 2: Contextual label when filtering */}
+                                                            {(startDate || endDate) && <p className="text-[8px] font-black uppercase text-slate-400 mt-1">del período seleccionado</p>}
                                                         </div>
                                                     </>
                                                 );
@@ -438,20 +458,20 @@ const ProveedorDetalle: React.FC = () => {
                                         <div className="flex items-center justify-between">
                                             <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">Movimientos de Cuenta</h4>
                                             <div className="flex gap-2">
-                                                <button 
+                                                <button
                                                     onClick={() => generateSupplierStatement(proveedor!, movimientos, startDate, endDate)}
                                                     className="h-8 px-3 bg-primary text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-md shadow-primary/20 hover:scale-95 transition-all flex items-center gap-2"
                                                 >
                                                     <span className="material-symbols-outlined text-sm">download</span>
                                                     Exportar PDF
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => setShowAjusteModal(true)}
                                                     className="h-8 px-3 bg-slate-100 dark:bg-zinc-800 text-slate-500 hover:text-primary text-[9px] font-black uppercase tracking-widest rounded-lg transition-all"
                                                 >
                                                     Ajustar Saldo
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => setShowPagoModal(true)}
                                                     className="h-8 px-4 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md shadow-emerald-600/20 hover:scale-95 transition-all flex items-center gap-2"
                                                 >
@@ -477,7 +497,7 @@ const ProveedorDetalle: React.FC = () => {
                                                         const isHaber = ['cargo', 'nota_debito'].includes(m.tipo);
                                                         const isDebe = ['pago', 'nota_credito'].includes(m.tipo);
                                                         const saldo = m.saldo_acumulado; // La vista ya nos da el saldo con signo correcto (Positivo = Deuda)
-                                                        
+
                                                         return (
                                                             <tr key={m.id} className="text-sm group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10 transition-colors">
                                                                 <td className="py-3 text-slate-500">{format(parseISO(m.fecha), 'dd/MM/yyyy')}</td>
@@ -516,7 +536,7 @@ const ProveedorDetalle: React.FC = () => {
                                             <div key={c.id} className="p-4 rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/20 group hover:border-primary/50 transition-all">
                                                 <div className="flex justify-between items-start">
                                                     <div>
-                                                         <p className="text-[10px] font-black text-slate-400 uppercase">{format(parseISO(c.fecha), 'dd/MM/yyyy')}</p>
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase">{format(parseISO(c.fecha), 'dd/MM/yyyy')}</p>
                                                         <h5 className="font-black text-slate-900 dark:text-white">Comp. #{c.nro_comprobante || 'S/N'}</h5>
                                                     </div>
                                                     <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${c.estado === 'recibida' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
@@ -582,7 +602,7 @@ const ProveedorDetalle: React.FC = () => {
                                 <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">Ajustar Saldo</h3>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Corrección manual de cuenta</p>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => setShowAjusteModal(false)}
                                 className="size-8 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-zinc-800 text-slate-400 transition-colors"
                             >
@@ -594,8 +614,9 @@ const ProveedorDetalle: React.FC = () => {
                             <div className="bg-primary/5 rounded-xl p-4 border border-primary/10">
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo Actual en Sistema</span>
-                                    <span className={`text-xs font-black ${-proveedor.saldo_actual > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                                        $ {(-proveedor.saldo_actual).toLocaleString()}
+                                    {/* BUG 3 FIX: Use Math.abs for consistency with the lateral card and avoid fragility of sign negation */}
+                                    <span className={`text-xs font-black ${proveedor.saldo_actual > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                        $ {Math.abs(proveedor.saldo_actual).toLocaleString()}
                                     </span>
                                 </div>
                             </div>
@@ -605,7 +626,7 @@ const ProveedorDetalle: React.FC = () => {
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nuevo Saldo Real</label>
                                     <div className="relative">
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                                        <input 
+                                        <input
                                             autoFocus
                                             type="number"
                                             step="0.01"
@@ -623,7 +644,7 @@ const ProveedorDetalle: React.FC = () => {
 
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Concepto del Ajuste</label>
-                                    <input 
+                                    <input
                                         type="text"
                                         value={conceptoAjuste}
                                         onChange={(e) => setConceptoAjuste(e.target.value)}
@@ -666,7 +687,7 @@ const ProveedorDetalle: React.FC = () => {
             )}
 
             {/* Pago a Proveedor Modal */}
-            <PagoProveedorModal 
+            <PagoProveedorModal
                 isOpen={showPagoModal}
                 onClose={() => setShowPagoModal(false)}
                 onSuccess={fetchData}
