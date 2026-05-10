@@ -61,9 +61,8 @@ const PagoProveedorModal: React.FC<PagoProveedorModalProps> = ({ isOpen, onClose
 
             if (pagoErr) throw pagoErr;
 
-            // BUG 2 FIX: Register in account history without 'saldo_acumulado'
-            // The view 'vista_cuenta_corriente_proveedores' handles all calculations.
-            // Removed legacy balance fetch (Step 2) and manual update (Step 4).
+            // CONVENTION: Positive = Debt, Negative = Credit (Favor)
+            const newSaldoDB = proveedor.saldo_actual - monto;
             const { error: ccErr } = await supabase
                 .from('cuenta_corriente_proveedores')
                 .insert([{
@@ -71,11 +70,20 @@ const PagoProveedorModal: React.FC<PagoProveedorModalProps> = ({ isOpen, onClose
                     fecha: fecha,
                     tipo: 'pago',
                     concepto: `Pago a Proveedor - ${formaPago.toUpperCase()}${referencia ? ` (${referencia})` : ''}`,
-                    monto: monto,
+                    monto: -monto, // Payments are negative to reduce balance
+                    saldo_acumulado: newSaldoDB,
                     usuario_id: currentUserId
                 }]);
 
             if (ccErr) throw ccErr;
+
+            // Also update the supplier's master balance for consistency
+            const { error: updateErr } = await supabase
+                .from('proveedores')
+                .update({ saldo_actual: newSaldoDB })
+                .eq('id', proveedor.id);
+
+            if (updateErr) throw updateErr;
 
             alert(`Pago de $${monto.toLocaleString()} registrado con éxito.`);
             onSuccess();

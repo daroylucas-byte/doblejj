@@ -170,10 +170,10 @@ const ProveedorDetalle: React.FC = () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
 
-            // UI: Positive = Debt. DB: Negative = Debt.
-            // Por lo tanto, invertimos el valor ingresado por el usuario para guardarlo en la DB
+            // CONVENTION: Positive = Debt, Negative = Credit (Favor)
+            // We use the same sign as the UI for consistency.
             const inputSaldo = Number(nuevoSaldoReal);
-            const targetSaldo = -inputSaldo;
+            const targetSaldo = inputSaldo;
 
             // BUG 2 Note: We still compare against the latest fetched balance to calculate the adjustment delta
             const currentSaldo = Number(proveedor.saldo_actual);
@@ -184,12 +184,13 @@ const ProveedorDetalle: React.FC = () => {
                 return;
             }
 
-            // Si el delta es positivo, significa que el saldo de la DB se hace "más positivo" (menos deuda o más crédito) -> PAGO
-            // Si el delta es negativo, significa que el saldo de la DB se hace "más negativo" (más deuda) -> CARGO
-            const tipo: 'cargo' | 'pago' = delta > 0 ? 'pago' : 'cargo';
-            const monto = delta; // El monto lo guardamos con su signo original para que la matemática coincida
+            // Si el delta es positivo, aumenta la deuda -> CARGO
+            // Si el delta es negativo, disminuye la deuda o aumenta el crédito -> PAGO
+            const tipo: 'cargo' | 'pago' = delta > 0 ? 'cargo' : 'pago';
+            const monto = delta; // El monto se suma directamente al saldo acumulado
 
-            // BUG 1 FIX: Removed 'saldo_acumulado' field as it's recalculated by the view
+            // RE-FIX: Added 'saldo_acumulado' back as the DB constraint requires it.
+            // Even if the view recalculates it for display, the base table still needs the snapshot.
             const { error: insertErr } = await supabase
                 .from('cuenta_corriente_proveedores')
                 .insert([{
@@ -198,6 +199,7 @@ const ProveedorDetalle: React.FC = () => {
                     tipo,
                     concepto: conceptoAjuste || 'Ajuste de Saldo',
                     monto,
+                    saldo_acumulado: targetSaldo,
                     usuario_id: user?.id
                 }]);
 

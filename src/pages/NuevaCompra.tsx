@@ -205,7 +205,7 @@ const NuevaCompra: React.FC = () => {
                         .single();
                     
                     const saldoBase = provData?.saldo_actual || 0;
-                    const nuevoSaldo = saldoBase - montoFinal; // En el sistema el saldo negativo es deuda
+                    const nuevoSaldo = saldoBase + montoFinal; // Positive = Debt
 
                     // 1. Insertar en Movimientos de Cuenta Corriente
                     await supabase.from('cuenta_corriente_proveedores').insert({
@@ -213,7 +213,7 @@ const NuevaCompra: React.FC = () => {
                         compra_id: compra.id,
                         tipo: 'cargo',
                         concepto: `Factura ${numeroFactura || 'Compra #' + compra.id.slice(0, 8)}`,
-                        monto: -montoFinal, // Cargo aumenta la deuda
+                        monto: montoFinal, // Cargo increases debt (positive)
                         saldo_acumulado: nuevoSaldo, // Saldo después del movimiento
                         fecha: format(new Date(), 'yyyy-MM-dd')
                     });
