@@ -215,7 +215,8 @@ const NuevaCompra: React.FC = () => {
                         concepto: `Factura ${numeroFactura || 'Compra #' + compra.id.slice(0, 8)}`,
                         monto: -montoFinal, // Cargo aumenta la deuda
                         saldo_acumulado: nuevoSaldo, // Saldo después del movimiento
-                        fecha: format(new Date(), 'yyyy-MM-dd')
+                        fecha: format(new Date(), 'yyyy-MM-dd'),
+                        usuario_id: user?.id
                     });
 
                     // 2. Actualizar el saldo_actual en la tabla proveedores
@@ -225,15 +226,73 @@ const NuevaCompra: React.FC = () => {
                 }
             } else {
                 // Se pagó en el acto (Efectivo o Transferencia)
-                // Se registra en la tabla `pagos_proveedores` (asumiendo que existe y tiene estos campos)
+                
+                // 1. Obtener saldo actual para los registros de CC
+                const { data: provData } = await supabase
+                    .from('proveedores')
+                    .select('saldo_actual')
+                    .eq('id', selectedProveedor.id)
+                    .single();
+                
+                const saldoBase = provData?.saldo_actual || 0;
+                const saldoConCargo = saldoBase + montoFinal;
+
+                // 2. Registrar el CARGO (la compra en sí) en CC
+                await supabase.from('cuenta_corriente_proveedores').insert({
+                    proveedor_id: selectedProveedor.id,
+                    compra_id: compra.id,
+                    tipo: 'cargo',
+                    concepto: `Compra Contado - Factura ${numeroFactura || compra.id.slice(0, 8)}`,
+                    monto: montoFinal,
+                    saldo_acumulado: saldoConCargo,
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
+                    usuario_id: user?.id
+                });
+
+                // 3. Registrar el PAGO (la salida de dinero) en CC
+                await supabase.from('cuenta_corriente_proveedores').insert({
+                    proveedor_id: selectedProveedor.id,
+                    compra_id: compra.id,
+                    tipo: 'pago',
+                    concepto: `Pago Contado (${metodoPago.toUpperCase()}) - Factura ${numeroFactura || compra.id.slice(0, 8)}`,
+                    monto: -montoFinal, // Negativo para restar deuda
+                    saldo_acumulado: saldoBase, // Vuelve al saldo original
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
+                    usuario_id: user?.id
+                });
+
+                // 4. Registrar en pagos_proveedores (para trazabilidad de pagos)
                 const { error: errorPago } = await supabase.from('pagos_proveedores').insert({
                     proveedor_id: selectedProveedor.id,
                     compra_id: compra.id,
                     monto: montoFinal,
                     forma_pago: metodoPago,
                     fecha: format(new Date(), 'yyyy-MM-dd'),
-                    referencia: `Pago Inmediato s/Factura ${numeroFactura || compra.id.slice(0, 8)}`
+                    referencia: `Pago Inmediato s/Factura ${numeroFactura || compra.id.slice(0, 8)}`,
+                    usuario_id: user?.id
                 });
+
+                // 5. Registrar en GASTOS (para que reste de la Caja)
+                try {
+                    const { data: categorias } = await supabase.from('categorias_gasto').select('id, nombre');
+                    const catMerc = categorias?.find(c => c.nombre.toLowerCase().includes('mercad')) || 
+                                    categorias?.find(c => c.nombre.toLowerCase().includes('compra')) || 
+                                    categorias?.[0];
+
+                    if (catMerc) {
+                        await supabase.from('gastos').insert({
+                            categoria_gasto_id: catMerc.id,
+                            concepto: `Compra a ${selectedProveedor.razon_social} - Factura ${numeroFactura || compra.id.slice(0, 8)}`,
+                            monto: montoFinal,
+                            forma_pago: metodoPago === 'transferencia' ? 'transferencia' : 'efectivo',
+                            fecha: format(new Date(), 'yyyy-MM-dd'),
+                            proveedor_id: selectedProveedor.id,
+                            usuario_id: user?.id
+                        });
+                    }
+                } catch (catErr) {
+                    console.error("Error al registrar gasto en caja:", catErr);
+                }
 
                 if (errorPago) {
                     console.warn("Could not insert payment, fallback logic required", errorPago);

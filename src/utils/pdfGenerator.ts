@@ -143,15 +143,12 @@ export const generateSaleTicket = (venta: Venta, items: VentaItem[], aclaracion?
 
         // Output
         const url = doc.output('bloburl');
-        console.log("PDF Generado exitosamente. Abriendo en nueva pestaña...");
+        console.log("PDF Generado exitosamente.");
+        return url;
 
-        const newWindow = window.open(url, '_blank');
-        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-            alert("El navegador bloqueó la apertura del ticket. Por favor, habilite las ventanas emergentes (popups) para este sitio.");
-        }
     } catch (error) {
         console.error("Error crítico generando el PDF:", error);
-        alert("Error al generar el ticket PDF. Revise la consola para más detalles.");
+        throw error;
     }
 };
 
