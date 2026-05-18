@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
+import PDFViewerModal from '../components/PDFViewerModal';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { generateSaleTicket } from '../utils/pdfGenerator';
@@ -36,12 +38,17 @@ interface CartItem extends Producto {
 }
 
 const NuevaVenta: React.FC = () => {
+    const navigate = useNavigate();
     const { user } = useAuthStore();
 
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [productos, setProductos] = useState<Producto[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    
+    // View States
+    const [showViewer, setShowViewer] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
     // Form State
     const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
@@ -216,15 +223,53 @@ const NuevaVenta: React.FC = () => {
             const { error: itemsErr } = await supabase.from('venta_items').insert(itemsToInsert);
             if (itemsErr) throw itemsErr;
 
+            // --- SINCRONIZACIÓN CUENTA CORRIENTE ---
+            // 1. Obtener el saldo actual del cliente para calcular el acumulado dinámico
+            const { data: clientData } = await supabase
+                .from('clientes')
+                .select('saldo_actual')
+                .eq('id', selectedCliente.id)
+                .single();
+            
+            const saldoBase = clientData?.saldo_actual || 0;
+            const saldoConCargo = saldoBase + total;
+
+            // 2. Registrar el CARGO siempre (la venta en sí impacta en la CC)
+            await supabase.from('cuenta_corriente').insert({
+                cliente_id: selectedCliente.id,
+                venta_id: venta.id,
+                tipo: 'cargo',
+                concepto: `Venta #${venta.numero || venta.id.slice(0, 6)}`,
+                monto: total,
+                saldo_acumulado: saldoConCargo,
+                fecha: format(new Date(), 'yyyy-MM-dd'),
+                usuario_id: user?.id
+            });
+
+            // 3. Si no es Cuenta Corriente (es decir, se pagó en el acto)
             if (formaPago !== 'cuenta_corriente') {
+                // Registrar el Pago en la tabla de pagos (Historial de Cobros / Caja)
                 await supabase.from('pagos').insert({
                     cliente_id: selectedCliente.id,
                     venta_id: venta.id,
                     monto: total,
                     forma_pago: formaPago,
-                    referencia: referenciaPago,
+                    referencia: referenciaPago || `Pago Contado - Venta #${venta.numero || venta.id.slice(0, 6)}`,
                     fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
-                    fecha: format(new Date(), 'yyyy-MM-dd')
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
+                    usuario_id: user?.id
+                });
+
+                // Registrar el PAGO en Cuenta Corriente para saldar la deuda generada por el cargo anterior
+                await supabase.from('cuenta_corriente').insert({
+                    cliente_id: selectedCliente.id,
+                    venta_id: venta.id,
+                    tipo: 'pago',
+                    concepto: `Cobro Contado (${formaPago.toUpperCase()}) - Venta #${venta.numero || venta.id.slice(0, 6)}`,
+                    monto: total,
+                    saldo_acumulado: saldoBase, // Vuelve al saldo original porque el pago cubre el cargo
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
+                    usuario_id: user?.id
                 });
             }
 
@@ -251,9 +296,13 @@ const NuevaVenta: React.FC = () => {
             setSaleSuccess(true);
 
             try {
-                generateSaleTicket(pdfVenta, pdfItems);
+                const url = generateSaleTicket(pdfVenta, pdfItems);
+                setPdfUrl(url as any);
+                setShowViewer(true);
             } catch (pdfErr) {
                 console.error("Error generating PDF:", pdfErr);
+                alert('Venta confirmada con éxito, pero hubo un error al generar el comprobante.');
+                navigate('/ventas');
             }
 
             alert('Venta confirmada con éxito!');
@@ -647,7 +696,7 @@ const NuevaVenta: React.FC = () => {
                                         </div>
                                     </div>
                                     <button 
-                                        onClick={() => generateSaleTicket(lastSaleData, lastSaleData.pdfItems)}
+                                        onClick={() => setShowViewer(true)}
                                         className="w-full py-4 bg-primary text-white rounded-2xl font-black text-lg shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
                                     >
                                         <span className="material-symbols-outlined text-2xl">description</span>
@@ -666,6 +715,20 @@ const NuevaVenta: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            <PDFViewerModal 
+                isOpen={showViewer}
+                onClose={() => navigate('/ventas')}
+                pdfUrl={pdfUrl}
+                onDownload={() => {
+                    if (pdfUrl) {
+                        const link = document.createElement('a');
+                        link.href = pdfUrl;
+                        link.download = `Ticket-Venta-${lastSaleData?.numero || lastSaleData?.id?.slice(0,6) || 'S-N'}.pdf`;
+                        link.click();
+                    }
+                }}
+            />
         </Layout>
     );
 };
