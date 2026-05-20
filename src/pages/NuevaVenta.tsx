@@ -223,31 +223,17 @@ const NuevaVenta: React.FC = () => {
             const { error: itemsErr } = await supabase.from('venta_items').insert(itemsToInsert);
             if (itemsErr) throw itemsErr;
 
-            // --- SINCRONIZACIÓN CUENTA CORRIENTE ---
-            // 1. Obtener el saldo actual del cliente para calcular el acumulado dinámico
-            const { data: clientData } = await supabase
-                .from('clientes')
-                .select('saldo_actual')
-                .eq('id', selectedCliente.id)
-                .single();
-            
-            const saldoBase = clientData?.saldo_actual || 0;
-            const saldoConCargo = saldoBase + total;
-
-            // 2. Registrar el CARGO siempre (la venta en sí impacta en la CC)
-            await supabase.from('cuenta_corriente').insert({
-                cliente_id: selectedCliente.id,
-                venta_id: venta.id,
-                tipo: 'cargo',
-                concepto: `Venta #${venta.numero || venta.id.slice(0, 6)}`,
-                monto: total,
-                saldo_acumulado: saldoConCargo,
-                fecha: format(new Date(), 'yyyy-MM-dd'),
-                usuario_id: user?.id
-            });
-
-            // 3. Si no es Cuenta Corriente (es decir, se pagó en el acto)
+            // El trigger trg_venta_cta_cte_auto registra el CARGO automáticamente.
+            // Aquí solo se registra el PAGO si la venta se cobró en el acto.
             if (formaPago !== 'cuenta_corriente') {
+                const { data: clientData } = await supabase
+                    .from('clientes')
+                    .select('saldo_actual')
+                    .eq('id', selectedCliente.id)
+                    .single();
+
+                const saldoBase = clientData?.saldo_actual || 0;
+
                 // Registrar el Pago en la tabla de pagos (Historial de Cobros / Caja)
                 await supabase.from('pagos').insert({
                     cliente_id: selectedCliente.id,
