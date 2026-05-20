@@ -545,7 +545,7 @@ const NuevaVenta: React.FC = () => {
                 </div>
 
                 {/* Right Panel: Totals & Payments (W-96) */}
-                <div className="w-full lg:w-[420px] flex flex-col gap-6 overflow-y-visible lg:overflow-y-auto shrink-0 lg:pr-2 lg:pb-6 lg:custom-scrollbar">
+                <div className="w-full lg:w-[420px] flex flex-col gap-6 overflow-y-auto min-h-0 shrink-0 lg:pr-2 lg:pb-6 lg:custom-scrollbar">
 
                     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm transition-all hover:shadow-md">
                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">3. Método de Pago</h3>
