@@ -545,7 +545,10 @@ const NuevaVenta: React.FC = () => {
                 </div>
 
                 {/* Right Panel: Totals & Payments (W-96) */}
-                <div className="w-full lg:w-[420px] flex flex-col gap-6 overflow-y-auto min-h-0 shrink-0 lg:pr-2 lg:pb-6 lg:custom-scrollbar">
+                <div className="w-full lg:w-[420px] flex flex-col min-h-0 shrink-0">
+
+                    {/* Scrollable area */}
+                    <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-6 lg:pr-2 lg:custom-scrollbar pb-4">
 
                     <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm transition-all hover:shadow-md">
                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">3. Método de Pago</h3>
@@ -631,12 +634,12 @@ const NuevaVenta: React.FC = () => {
                     </div>
 
                     {/* Summary Section */}
-                    <div className="bg-white dark:bg-zinc-900 p-6 xl:p-8 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl transition-all relative overflow-hidden flex-1 shrink-0 flex flex-col justify-between">
+                    <div className="bg-white dark:bg-zinc-900 p-6 xl:p-8 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl transition-all relative overflow-hidden shrink-0">
                         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
                             <span className="material-symbols-outlined text-9xl">shopping_basket</span>
                         </div>
 
-                        <div className="space-y-4 mb-6">
+                        <div className="space-y-4">
                             <div className="flex justify-between items-center text-slate-400">
                                 <span className="text-xs font-bold uppercase tracking-widest italic">Subtotal</span>
                                 <span className="font-black text-slate-900 dark:text-white whitespace-nowrap">$ {subtotal.toLocaleString()}</span>
@@ -656,48 +659,51 @@ const NuevaVenta: React.FC = () => {
                                 </span>
                             </div>
                         </div>
+                    </div>
 
-                        <div className="flex flex-col gap-3 mt-auto relative z-10 pb-2">
-                            {!saleSuccess ? (
-                                <button
-                                    onClick={handleConfirmSale}
-                                    disabled={saving || cart.length === 0}
-                                    className="w-full py-4 xl:py-5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black text-lg xl:text-xl shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
-                                >
-                                    {saving ? (
-                                        <div className="size-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                    ) : (
-                                        <>
-                                            <span className="material-symbols-outlined text-2xl xl:text-3xl group-hover:rotate-12 transition-transform">check_circle</span>
-                                            CONFIRMAR VENTA
-                                        </>
-                                    )}
-                                </button>
-                            ) : (
-                                <>
-                                    <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl mb-2 animate-in zoom-in-95 duration-300">
-                                        <div className="flex items-center gap-3 text-emerald-600">
-                                            <span className="material-symbols-outlined font-bold">check_circle</span>
-                                            <span className="text-xs font-black uppercase tracking-widest">¡Venta Exitosa!</span>
-                                        </div>
+                    </div>{/* end scrollable area */}
+
+                    {/* Sticky confirm button */}
+                    <div className="shrink-0 pt-3 lg:pb-6">
+                        {!saleSuccess ? (
+                            <button
+                                onClick={handleConfirmSale}
+                                disabled={saving || cart.length === 0}
+                                className="w-full py-4 xl:py-5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black text-lg xl:text-xl shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
+                            >
+                                {saving ? (
+                                    <div className="size-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                ) : (
+                                    <>
+                                        <span className="material-symbols-outlined text-2xl xl:text-3xl group-hover:rotate-12 transition-transform">check_circle</span>
+                                        CONFIRMAR VENTA
+                                    </>
+                                )}
+                            </button>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl animate-in zoom-in-95 duration-300">
+                                    <div className="flex items-center gap-3 text-emerald-600">
+                                        <span className="material-symbols-outlined font-bold">check_circle</span>
+                                        <span className="text-xs font-black uppercase tracking-widest">¡Venta Exitosa!</span>
                                     </div>
-                                    <button 
-                                        onClick={() => setShowViewer(true)}
-                                        className="w-full py-4 bg-primary text-white rounded-2xl font-black text-lg shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
-                                    >
-                                        <span className="material-symbols-outlined text-2xl">description</span>
-                                        DESCARGAR COMPROBANTE
-                                    </button>
-                                    <button 
-                                        onClick={() => window.location.reload()}
-                                        className="w-full py-3 bg-slate-100 dark:bg-zinc-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:bg-slate-200"
-                                    >
-                                        <span className="material-symbols-outlined text-xl">add_shopping_cart</span>
-                                        NUEVA VENTA
-                                    </button>
-                                </>
-                            )}
-                        </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowViewer(true)}
+                                    className="w-full py-4 bg-primary text-white rounded-2xl font-black text-lg shadow-lg shadow-primary/30 flex items-center justify-center gap-3 transition-all active:scale-95 group"
+                                >
+                                    <span className="material-symbols-outlined text-2xl">description</span>
+                                    DESCARGAR COMPROBANTE
+                                </button>
+                                <button
+                                    onClick={() => window.location.reload()}
+                                    className="w-full py-3 bg-slate-100 dark:bg-zinc-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:bg-slate-200"
+                                >
+                                    <span className="material-symbols-outlined text-xl">add_shopping_cart</span>
+                                    NUEVA VENTA
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
