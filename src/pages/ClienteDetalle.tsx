@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
+import PDFViewerModal from '../components/PDFViewerModal';
 import { supabase } from '../lib/supabase';
 import { generateClientStatement, generateSaleTicket } from '../utils/pdfGenerator';
 
@@ -56,6 +57,11 @@ const ClienteDetalle: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'movimientos' | 'compras' | 'stats'>('movimientos');
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
+
+    // PDF Viewer States
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [pdfVentaNumero, setPdfVentaNumero] = useState<string>('');
 
     // Ajuste de Saldo States
     const [showAjusteModal, setShowAjusteModal] = useState(false);
@@ -239,7 +245,10 @@ const ClienteDetalle: React.FC = () => {
                 productos: Array.isArray(item.productos) ? item.productos[0] : item.productos
             }));
 
-            generateSaleTicket(ventaFull, (itemsFormatted as any) || []);
+            const url = generateSaleTicket(ventaFull, (itemsFormatted as any) || []);
+            setPdfUrl(url as unknown as string);
+            setPdfVentaNumero(venta.numero || venta.id.slice(0, 6));
+            setShowPdfViewer(true);
         } catch (error) {
             console.error('Error generating ticket:', error);
             alert('Error al generar el ticket');
@@ -676,6 +685,21 @@ const ClienteDetalle: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            <PDFViewerModal
+                isOpen={showPdfViewer}
+                onClose={() => setShowPdfViewer(false)}
+                pdfUrl={pdfUrl}
+                title={`Ticket #${pdfVentaNumero}`}
+                onDownload={() => {
+                    if (pdfUrl) {
+                        const link = document.createElement('a');
+                        link.href = pdfUrl;
+                        link.download = `Ticket-Venta-${pdfVentaNumero}.pdf`;
+                        link.click();
+                    }
+                }}
+            />
         </Layout>
     );
 };
