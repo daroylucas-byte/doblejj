@@ -246,7 +246,7 @@ const ClienteDetalle: React.FC = () => {
             }));
 
             const url = generateSaleTicket(ventaFull, (itemsFormatted as any) || []);
-            setPdfUrl(url as string);
+            setPdfUrl(url as unknown as string);
             setPdfVentaNumero(venta.numero || venta.id.slice(0, 6));
             setShowPdfViewer(true);
         } catch (error) {
