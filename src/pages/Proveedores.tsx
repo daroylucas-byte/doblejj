@@ -46,6 +46,8 @@ const Proveedores: React.FC = () => {
             if (categoryFilter) {
                 query = query.eq('categoria_proveedor', categoryFilter);
             }
+            
+            // Status filter logic remains on the DB side for initial fetch
             if (statusFilter === 'debt') {
                 query = query.lt('saldo_actual', 0);
             } else if (statusFilter === 'no-debt') {
@@ -54,10 +56,32 @@ const Proveedores: React.FC = () => {
 
             const { data, error } = await query;
             if (error) throw error;
-            setProveedores(data || []);
 
-            // Calculate basic stats for this demo
-            const total = (data || []).reduce((acc, curr) => acc + (curr.saldo_actual < 0 ? Math.abs(curr.saldo_actual) : 0), 0);
+            // BUG 1 FIX: Fetch real dynamic balances from the view
+            const { data: saldosData } = await supabase
+                .from('vista_cuenta_corriente_proveedores')
+                .select('proveedor_id, saldo_acumulado')
+                .order('fecha', { ascending: false })
+                .order('created_at', { ascending: false });
+
+            // Quedarse con el saldo más reciente por proveedor (el primero en DESC)
+            const saldosPorProveedor: Record<string, number> = {};
+            (saldosData || []).forEach(m => {
+                if (!(m.proveedor_id in saldosPorProveedor)) {
+                    saldosPorProveedor[m.proveedor_id] = m.saldo_acumulado;
+                }
+            });
+
+            // Mergear con los proveedores y usar convención vista: positivo = deuda
+            const proveedoresConSaldo = (data || []).map(p => ({
+                ...p,
+                saldo_actual: saldosPorProveedor[p.id] ?? p.saldo_actual
+            }));
+
+            setProveedores(proveedoresConSaldo);
+
+            // Calculate basic stats using the new convention (positive = debt)
+            const total = proveedoresConSaldo.reduce((acc, curr) => acc + (curr.saldo_actual > 0 ? curr.saldo_actual : 0), 0);
             const activos = (data || []).filter(p => p.activo).length;
 
             setStats({
@@ -240,7 +264,7 @@ const Proveedores: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-500 font-medium">{p.telefono || 'N/A'}</td>
                                             <td className="px-6 py-4 text-right">
-                                                <span className={`font-black text-sm ${p.saldo_actual < 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                <span className={`font-black text-sm ${p.saldo_actual > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
                                                     $ {Math.abs(p.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                                                 </span>
                                             </td>

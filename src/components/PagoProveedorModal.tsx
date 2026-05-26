@@ -46,7 +46,7 @@ const PagoProveedorModal: React.FC<PagoProveedorModalProps> = ({ isOpen, onClose
             const { data: { user } } = await supabase.auth.getUser();
             const currentUserId = user?.id;
 
-            // 1. Register the payment in pagos_proveedores
+            // 1. Register the payment in pagos_proveedores (remains same)
             const { error: pagoErr } = await supabase
                 .from('pagos_proveedores')
                 .insert([{
@@ -61,18 +61,8 @@ const PagoProveedorModal: React.FC<PagoProveedorModalProps> = ({ isOpen, onClose
 
             if (pagoErr) throw pagoErr;
 
-            // 2. Fetch current balance to calculate the new one accurately
-            const { data: latestProv, error: pErr } = await supabase
-                .from('proveedores')
-                .select('saldo_actual')
-                .eq('id', proveedor.id)
-                .single();
-            
-            if (pErr) throw pErr;
-            const currentSaldo = Number(latestProv.saldo_actual);
-
-            // 3. Register the entry in Cuenta Corriente
-            // Note: Payments increase the balance (move it towards 0 or positive)
+            // CONVENTION: Positive = Debt, Negative = Credit (Favor)
+            const newSaldoDB = proveedor.saldo_actual - monto;
             const { error: ccErr } = await supabase
                 .from('cuenta_corriente_proveedores')
                 .insert([{
@@ -80,18 +70,17 @@ const PagoProveedorModal: React.FC<PagoProveedorModalProps> = ({ isOpen, onClose
                     fecha: fecha,
                     tipo: 'pago',
                     concepto: `Pago a Proveedor - ${formaPago.toUpperCase()}${referencia ? ` (${referencia})` : ''}`,
-                    monto: monto,
-                    saldo_acumulado: currentSaldo + monto,
+                    monto: -monto, // Payments are negative to reduce balance
+                    saldo_acumulado: newSaldoDB,
                     usuario_id: currentUserId
                 }]);
 
             if (ccErr) throw ccErr;
 
-            // 4. Update the supplier's balance in the providers table
-            // This is usually handled by triggers but we do it here for immediate consistency if no trigger exists
+            // Also update the supplier's master balance for consistency
             const { error: updateErr } = await supabase
                 .from('proveedores')
-                .update({ saldo_actual: currentSaldo + monto })
+                .update({ saldo_actual: newSaldoDB })
                 .eq('id', proveedor.id);
 
             if (updateErr) throw updateErr;
@@ -138,14 +127,15 @@ const PagoProveedorModal: React.FC<PagoProveedorModalProps> = ({ isOpen, onClose
                     <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 flex justify-between items-center">
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saldo Actual</p>
-                            <p className={`text-2xl font-black ${proveedor.saldo_actual < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                $ {proveedor.saldo_actual.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                            {/* BUG 2 FIX: Use Math.abs and check > 0 for debt (Vista Convention) */}
+                            <p className={`text-2xl font-black ${proveedor.saldo_actual > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                $ {Math.abs(proveedor.saldo_actual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                             </p>
                         </div>
                         <div className="text-right">
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estado</p>
-                            <p className={`text-sm font-bold ${proveedor.saldo_actual < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                {proveedor.saldo_actual < 0 ? 'DEUDA' : 'SALDO A FAVOR'}
+                            <p className={`text-sm font-bold ${proveedor.saldo_actual > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                {proveedor.saldo_actual > 0 ? 'DEUDA' : 'SALDO A FAVOR'}
                             </p>
                         </div>
                     </div>
