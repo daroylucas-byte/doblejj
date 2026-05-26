@@ -401,3 +401,75 @@ export const generateSupplierStatement = (
         alert("Error al generar el PDF del resumen de cuenta.");
     }
 };
+
+
+export const generatePurchaseTicket = (
+    compra: { id: string; nro_comprobante?: string | null; fecha: string; total: number; estado: string },
+    items: Array<{ cantidad: number; precio_unitario: number; subtotal: number; productos?: { nombre: string; codigo?: string | null } | null }>,
+    proveedor: { razon_social: string; cuit?: string }
+) => {
+    try {
+        const doc = new jsPDF({ unit: 'mm', format: [72, 290] });
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 4;
+
+        try {
+            doc.addImage('/logo_ticket.png', 'PNG', (pageWidth - 20) / 2, 5, 20, 20);
+        } catch (e) { /* logo opcional */ }
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DOBLE JJ ABASTECIMIENTOS', pageWidth / 2, 30, { align: 'center' });
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Mayorista de Carnes', pageWidth / 2, 34, { align: 'center' });
+        doc.line(margin, 36, pageWidth - margin, 36);
+
+        doc.setFontSize(8);
+        doc.text(`Compra Nro: ${compra.nro_comprobante || 'S/N'}`, margin, 41);
+        doc.text(`Fecha: ${format(parseISO(compra.fecha), 'dd/MM/yyyy', { locale: es })}`, margin, 45);
+        doc.text(`Estado: ${compra.estado.toUpperCase()}`, margin, 49);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('PROVEEDOR:', margin, 55);
+        doc.setFont('helvetica', 'normal');
+        doc.text(proveedor.razon_social, margin + 18, 55);
+        if (proveedor.cuit) doc.text(`CUIT: ${proveedor.cuit}`, margin, 59);
+
+        doc.line(margin, 62, pageWidth - margin, 62);
+
+        const tableData = items.map(item => [
+            item.productos?.nombre || 'Producto',
+            item.cantidad.toString(),
+            `$ ${item.precio_unitario.toLocaleString('es-AR')}`,
+            `$ ${item.subtotal.toLocaleString('es-AR')}`
+        ]);
+
+        autoTable(doc, {
+            startY: 64,
+            head: [['Detalle', 'Cant', 'P.Uni', 'Subt']],
+            body: tableData,
+            theme: 'plain',
+            styles: { fontSize: 7, cellPadding: 1 },
+            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+            margin: { left: margin, right: margin },
+            columnStyles: { 0: { cellWidth: 'auto' }, 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' } }
+        });
+
+        const finalY = (doc as any).lastAutoTable.finalY + 5;
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('TOTAL:', margin, finalY);
+        doc.text(`$ ${compra.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, pageWidth - margin, finalY, { align: 'right' });
+
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'italic');
+        doc.text('Doble JJ Abastecimientos', pageWidth / 2, finalY + 14, { align: 'center' });
+        doc.text('3541625537 / 3541625536', pageWidth / 2, finalY + 18, { align: 'center' });
+
+        return doc.output('bloburl');
+    } catch (error) {
+        console.error("Error generando PDF de compra:", error);
+        throw error;
+    }
+};

@@ -32,11 +32,14 @@ const Clientes: React.FC = () => {
     const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterTipo, setFilterTipo] = useState('Todos');
+    const [activeTab, setActiveTab] = useState<'activos' | 'inactivos'>('activos');
 
     const fetchClientes = useCallback(async () => {
         setLoading(true);
         try {
             let query = supabase.from('clientes').select('*').order('razon_social', { ascending: true });
+
+            query = query.eq('activo', activeTab === 'activos');
 
             if (searchTerm) {
                 query = query.or(`razon_social.ilike.%${searchTerm}%,cuit.ilike.%${searchTerm}%,nombre_fantasia.ilike.%${searchTerm}%`);
@@ -54,7 +57,7 @@ const Clientes: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [searchTerm, filterTipo]);
+    }, [searchTerm, filterTipo, activeTab]);
 
     useEffect(() => {
         fetchClientes();
@@ -73,6 +76,12 @@ const Clientes: React.FC = () => {
     const handleCobro = (cliente: Cliente) => {
         setSelectedCliente(cliente);
         setIsCobroModalOpen(true);
+    };
+
+    const handleReactivar = async (cliente: Cliente) => {
+        if (!confirm(`¿Reactivar a ${cliente.razon_social}?`)) return;
+        const { error } = await supabase.from('clientes').update({ activo: true }).eq('id', cliente.id);
+        if (!error) fetchClientes();
     };
 
     return (
@@ -125,6 +134,22 @@ const Clientes: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Tabs */}
+                <div className="flex gap-1 bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl w-fit">
+                    <button
+                        onClick={() => setActiveTab('activos')}
+                        className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'activos' ? 'bg-white dark:bg-zinc-900 text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Activos
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('inactivos')}
+                        className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'inactivos' ? 'bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Inactivos
+                    </button>
+                </div>
+
                 {/* Clients Table */}
                 <div className="bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden transition-all duration-300">
                     <div className="overflow-x-auto">
@@ -160,7 +185,7 @@ const Clientes: React.FC = () => {
                                     clientes.map((cliente) => (
                                         <tr
                                             key={cliente.id}
-                                            className={`group hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors ${!cliente.activo ? 'opacity-60 grayscale' : ''}`}
+                                            className="group hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors"
                                         >
                                             <td className="px-3 sm:px-6 py-4">
                                                 <Link to={`/clientes/${cliente.id}`} className="flex flex-col group/name">
@@ -209,20 +234,32 @@ const Clientes: React.FC = () => {
                                                     >
                                                         <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-110 transition-transform">visibility</span>
                                                     </Link>
-                                                    <button
-                                                        onClick={(e) => { e.preventDefault(); handleEdit(cliente); }}
-                                                        className="p-1 sm:p-2 text-slate-400 hover:text-amber-500 transition-all hover:bg-amber-500/10 rounded-lg group"
-                                                        title="Editar Datos"
-                                                    >
-                                                        <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-110 transition-transform">edit_square</span>
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.preventDefault(); handleCobro(cliente); }}
-                                                        className="p-1 sm:p-2 text-emerald-500 hover:text-emerald-600 transition-all hover:bg-emerald-500/10 rounded-lg group"
-                                                        title="Registrar Cobro"
-                                                    >
-                                                        <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-125 transition-transform font-bold">payments</span>
-                                                    </button>
+                                                    {activeTab === 'activos' ? (
+                                                        <>
+                                                            <button
+                                                                onClick={(e) => { e.preventDefault(); handleEdit(cliente); }}
+                                                                className="p-1 sm:p-2 text-slate-400 hover:text-amber-500 transition-all hover:bg-amber-500/10 rounded-lg group"
+                                                                title="Editar Datos"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-110 transition-transform">edit_square</span>
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.preventDefault(); handleCobro(cliente); }}
+                                                                className="p-1 sm:p-2 text-emerald-500 hover:text-emerald-600 transition-all hover:bg-emerald-500/10 rounded-lg group"
+                                                                title="Registrar Cobro"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-125 transition-transform font-bold">payments</span>
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <button
+                                                            onClick={(e) => { e.preventDefault(); handleReactivar(cliente); }}
+                                                            className="p-1 sm:p-2 text-slate-400 hover:text-emerald-500 transition-all hover:bg-emerald-500/10 rounded-lg group"
+                                                            title="Reactivar Cliente"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[20px] sm:text-24 group-hover:scale-110 transition-transform">person_check</span>
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
