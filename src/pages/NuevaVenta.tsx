@@ -73,7 +73,7 @@ const NuevaVenta: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const { data: clientsData } = await supabase.from('clientes').select('*').order('razon_social');
+            const { data: clientsData } = await supabase.from('clientes').select('*').eq('activo', true).order('razon_social');
             const { data: productsData } = await supabase.from('productos').select('*').order('nombre');
             setClientes(clientsData || []);
             setProductos(productsData || []);

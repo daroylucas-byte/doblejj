@@ -21,6 +21,7 @@ interface Cliente {
     saldo_actual: number;
     limite_credito: number;
     notas: string;
+    activo: boolean;
 }
 
 interface Venta {
@@ -284,6 +285,17 @@ const ClienteDetalle: React.FC = () => {
             </MainHeader>
 
             <div className="p-8 max-w-[1600px] mx-auto w-full">
+
+                {!cliente.activo && (
+                    <div className="mb-6 flex items-center gap-3 bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded-xl px-5 py-4">
+                        <span className="material-symbols-outlined text-slate-400 text-2xl">person_off</span>
+                        <div>
+                            <p className="text-sm font-black text-slate-600 dark:text-slate-300 uppercase tracking-widest">Cliente Inactivo</p>
+                            <p className="text-xs text-slate-400">Este cliente está desactivado. Solo se puede consultar su información.</p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
 
                     {/* Left Panel: Profile & Details */}
@@ -352,16 +364,18 @@ const ClienteDetalle: React.FC = () => {
                             <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-6 rounded-2xl shadow-sm">
                                 <div className="flex items-center justify-between mb-1">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saldo Actual</p>
-                                    <button 
-                                        onClick={() => {
-                                            setNuevoSaldoReal(cliente.saldo_actual.toString());
-                                            setShowAjusteModal(true);
-                                        }}
-                                        className="text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
-                                        title="Ajustar Saldo Manualmente"
-                                    >
-                                        <span className="material-symbols-outlined text-sm">edit</span>
-                                    </button>
+                                    {cliente.activo && (
+                                        <button
+                                            onClick={() => {
+                                                setNuevoSaldoReal(cliente.saldo_actual.toString());
+                                                setShowAjusteModal(true);
+                                            }}
+                                            className="text-slate-400 hover:text-primary transition-colors flex items-center gap-1"
+                                            title="Ajustar Saldo Manualmente"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">edit</span>
+                                        </button>
+                                    )}
                                 </div>
                                 <p className={`text-2xl font-black ${cliente.saldo_actual > 0 ? 'text-red-500' : 'text-green-500'}`}>
                                     $ {Math.abs(cliente.saldo_actual).toLocaleString()}

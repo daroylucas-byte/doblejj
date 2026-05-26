@@ -5,7 +5,8 @@ import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import { supabase } from '../lib/supabase';
 import PagoProveedorModal from '../components/PagoProveedorModal';
-import { generateSupplierStatement } from '../utils/pdfGenerator';
+import PDFViewerModal from '../components/PDFViewerModal';
+import { generateSupplierStatement, generatePurchaseTicket } from '../utils/pdfGenerator';
 
 interface Proveedor {
     id: string;
@@ -55,6 +56,11 @@ const ProveedorDetalle: React.FC = () => {
     const [topProductos, setTopProductos] = useState<TopProductoProveedor[]>([]);
     const [loading, setLoading] = useState(true);
     
+    // PDF Viewer States
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [pdfCompraNumero, setPdfCompraNumero] = useState<string>('');
+
     // Ajuste de Saldo State
     const [showAjusteModal, setShowAjusteModal] = useState(false);
     const [showPagoModal, setShowPagoModal] = useState(false);
@@ -148,6 +154,109 @@ const ProveedorDetalle: React.FC = () => {
             setIsFiltering(false);
         }
     }, [id, startDate, endDate]);
+
+    const handleGenerateTicket = async (compra: Compra) => {
+        try {
+            const { data: items, error } = await supabase
+                .from('compra_items')
+                .select('cantidad, precio_unitario, subtotal, productos (nombre, codigo)')
+                .eq('compra_id', compra.id);
+            if (error) throw error;
+
+            const itemsFormatted = (items || []).map((item: any) => ({
+                ...item,
+                productos: Array.isArray(item.productos) ? item.productos[0] : item.productos
+            }));
+
+            const url = generatePurchaseTicket(compra, itemsFormatted, proveedor!);
+            setPdfUrl(url as unknown as string);
+            setPdfCompraNumero(compra.nro_comprobante || compra.id.slice(0, 8));
+            setShowPdfViewer(true);
+        } catch (error) {
+            console.error('Error generating ticket:', error);
+            alert('Error al generar el ticket');
+        }
+    };
+
+    const handleAnularCompra = async (compra: Compra) => {
+        if (!confirm(`¿Anular la compra Comp. #${compra.nro_comprobante || 'S/N'} por $${Number(compra.total).toLocaleString()}?\nEsto revertirá el stock de todos los productos.`)) return;
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+
+            // 1. Obtener los items de la compra
+            const { data: items, error: itemsErr } = await supabase
+                .from('compra_items')
+                .select('producto_id, cantidad')
+                .eq('compra_id', compra.id);
+            if (itemsErr) throw itemsErr;
+
+            // 2. Revertir stock de cada producto
+            for (const item of (items || [])) {
+                const { data: prod } = await supabase
+                    .from('productos')
+                    .select('stock_actual')
+                    .eq('id', item.producto_id)
+                    .single();
+
+                const stockAnterior = prod?.stock_actual || 0;
+                const stockNuevo = Math.max(0, stockAnterior - item.cantidad);
+
+                await supabase.from('productos')
+                    .update({ stock_actual: stockNuevo })
+                    .eq('id', item.producto_id);
+
+                await supabase.from('movimientos_stock').insert({
+                    producto_id: item.producto_id,
+                    tipo: 'salida',
+                    cantidad: item.cantidad,
+                    stock_anterior: stockAnterior,
+                    stock_nuevo: stockNuevo,
+                    motivo: `Anulación Compra #${compra.nro_comprobante || compra.id.slice(0, 8)}`,
+                    referencia_tipo: 'compra',
+                    referencia_id: compra.id,
+                    usuario_id: user?.id
+                });
+            }
+
+            // 3. Registrar nota de crédito en cuenta corriente del proveedor
+            const { data: provData } = await supabase
+                .from('proveedores')
+                .select('saldo_actual')
+                .eq('id', id)
+                .single();
+
+            const saldoActual = provData?.saldo_actual || 0;
+            const nuevoSaldo = saldoActual + Number(compra.total); // Reduce la deuda
+
+            await supabase.from('cuenta_corriente_proveedores').insert({
+                proveedor_id: id,
+                compra_id: compra.id,
+                tipo: 'nota_credito',
+                concepto: `Anulación Comp. #${compra.nro_comprobante || compra.id.slice(0, 8)}`,
+                monto: Number(compra.total),
+                saldo_acumulado: nuevoSaldo,
+                fecha: new Date().toISOString().split('T')[0],
+                usuario_id: user?.id
+            });
+
+            // 4. Actualizar saldo del proveedor
+            await supabase.from('proveedores')
+                .update({ saldo_actual: nuevoSaldo })
+                .eq('id', id);
+
+            // 5. Marcar la compra como anulada
+            const { error: anularErr } = await supabase.from('compras')
+                .update({ estado: 'anulada' })
+                .eq('id', compra.id);
+            if (anularErr) throw anularErr;
+
+            await fetchData();
+        } catch (error) {
+            console.error('Error al anular compra:', error);
+            alert('Error al anular la compra.');
+        }
+    };
 
     const handleAjusteSaldo = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -513,21 +622,40 @@ const ProveedorDetalle: React.FC = () => {
                                 {activeTab === 'compras' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {compras.map(c => (
-                                            <div key={c.id} className="p-4 rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/20 group hover:border-primary/50 transition-all">
+                                            <div
+                                                key={c.id}
+                                                onClick={() => handleGenerateTicket(c)}
+                                                className="p-4 rounded-xl border border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/20 group hover:border-primary/50 hover:bg-primary/5 dark:hover:bg-primary/5 transition-all cursor-pointer"
+                                            >
                                                 <div className="flex justify-between items-start">
                                                     <div>
                                                          <p className="text-[10px] font-black text-slate-400 uppercase">{format(parseISO(c.fecha), 'dd/MM/yyyy')}</p>
-                                                        <h5 className="font-black text-slate-900 dark:text-white">Comp. #{c.nro_comprobante || 'S/N'}</h5>
+                                                        <h5 className="font-black text-slate-900 dark:text-white group-hover:text-primary transition-colors">Comp. #{c.nro_comprobante || 'S/N'}</h5>
                                                     </div>
-                                                    <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${c.estado === 'recibida' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                    <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${c.estado === 'recibida' ? 'bg-green-100 text-green-600' : c.estado === 'anulada' ? 'bg-red-100 text-red-500' : 'bg-amber-100 text-amber-600'}`}>
                                                         {c.estado}
                                                     </span>
                                                 </div>
                                                 <div className="mt-4 flex justify-between items-center">
                                                     <p className="text-lg font-black text-primary">$ {Number(c.total).toLocaleString()}</p>
-                                                    <button className="p-2 text-slate-400 hover:text-primary transition-colors">
-                                                        <span className="material-symbols-outlined">receipt_long</span>
-                                                    </button>
+                                                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            onClick={() => handleGenerateTicket(c)}
+                                                            className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
+                                                            title="Ver Detalle"
+                                                        >
+                                                            <span className="material-symbols-outlined text-xl">receipt_long</span>
+                                                        </button>
+                                                        {c.estado === 'recibida' && (
+                                                            <button
+                                                                onClick={() => handleAnularCompra(c)}
+                                                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-all"
+                                                                title="Anular Compra"
+                                                            >
+                                                                <span className="material-symbols-outlined text-xl">cancel</span>
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -665,8 +793,23 @@ const ProveedorDetalle: React.FC = () => {
                 </div>
             )}
 
+            <PDFViewerModal
+                isOpen={showPdfViewer}
+                onClose={() => setShowPdfViewer(false)}
+                pdfUrl={pdfUrl}
+                title={`Compra #${pdfCompraNumero}`}
+                onDownload={() => {
+                    if (pdfUrl) {
+                        const link = document.createElement('a');
+                        link.href = pdfUrl;
+                        link.download = `Compra-${pdfCompraNumero}.pdf`;
+                        link.click();
+                    }
+                }}
+            />
+
             {/* Pago a Proveedor Modal */}
-            <PagoProveedorModal 
+            <PagoProveedorModal
                 isOpen={showPagoModal}
                 onClose={() => setShowPagoModal(false)}
                 onSuccess={fetchData}
