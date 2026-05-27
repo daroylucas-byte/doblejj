@@ -56,7 +56,7 @@ const NuevaVenta: React.FC = () => {
     const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'cheque' | 'icheque' | 'cuenta_corriente'>('cuenta_corriente');
     const [montoPago, setMontoPago] = useState<number>(0);
     const [referenciaPago, setReferenciaPago] = useState('');
-    const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
+    const [fechaVencimiento, setFechaVencimiento] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [searchProduct, setSearchProduct] = useState('');
     const [filteredProducts, setFilteredProducts] = useState<Producto[]>([]);
     const [productDropdown, setProductDropdown] = useState(false);

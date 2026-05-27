@@ -194,7 +194,7 @@ const ClienteDetalle: React.FC = () => {
                 .from('cuenta_corriente')
                 .insert([{
                     cliente_id: id,
-                    fecha: new Date().toISOString().split('T')[0],
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
                     tipo,
                     concepto: conceptoAjuste || 'Saldo Anterior',
                     monto,

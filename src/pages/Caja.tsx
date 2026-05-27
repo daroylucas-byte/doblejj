@@ -332,7 +332,7 @@ export default function Caja() {
                 concepto: egresoForm.concepto.toUpperCase(),
                 categoria_gasto_id: egresoForm.categoria_gasto_id,
                 forma_pago: egresoForm.forma_pago,
-                fecha: new Date().toISOString().split('T')[0],
+                fecha: format(new Date(), 'yyyy-MM-dd'),
                 usuario_id: user?.id,
                 created_at: new Date().toISOString()
             }]);
