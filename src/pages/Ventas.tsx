@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -61,7 +62,7 @@ const Ventas: React.FC = () => {
     const [deliveryStatus, setDeliveryStatus] = useState<Venta['estado']>('entregada');
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
     const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia' | 'cheque' | 'icheque'>('efectivo');
-    const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
+    const [fechaVencimiento, setFechaVencimiento] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [aclaracion, setAclaracion] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -229,7 +230,7 @@ const Ventas: React.FC = () => {
                     .from('cuenta_corriente')
                     .insert([{
                         cliente_id: clientId,
-                        fecha: new Date().toISOString().split('T')[0],
+                        fecha: format(new Date(), 'yyyy-MM-dd'),
                         tipo: 'nota_credito',
                         concepto: `Anulación Venta #${venta.numero || venta.id.slice(0, 6)}`,
                         monto: Number(venta.total),
@@ -300,7 +301,7 @@ const Ventas: React.FC = () => {
                     .from('cuenta_corriente')
                     .insert([{
                         cliente_id: clientId,
-                        fecha: new Date().toISOString().split('T')[0],
+                        fecha: format(new Date(), 'yyyy-MM-dd'),
                         tipo: adjustment > 0 ? 'cargo' : 'nota_credito',
                         concepto: `Ajuste en Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
                         monto: Math.abs(adjustment),
@@ -339,7 +340,7 @@ const Ventas: React.FC = () => {
                     .from('cuenta_corriente')
                     .insert([{
                         cliente_id: clientId,
-                        fecha: new Date().toISOString().split('T')[0],
+                        fecha: format(new Date(), 'yyyy-MM-dd'),
                         tipo: 'pago',
                         concepto: `Cobro Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
                         monto: Number(paymentAmount),
@@ -801,7 +802,7 @@ const Ventas: React.FC = () => {
                                     </span>
                                 </div>
                                 <h2 className="text-3xl font-black uppercase tracking-tighter text-slate-900 dark:text-white">ORDEN #{selectedVenta.numero}</h2>
-                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{new Date(selectedVenta.fecha).toLocaleString()}</p>
+                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{format(parseISO(selectedVenta.fecha), 'dd/MM/yyyy', { locale: es })}</p>
                             </div>
                             <button 
                                 onClick={handleCloseModal}

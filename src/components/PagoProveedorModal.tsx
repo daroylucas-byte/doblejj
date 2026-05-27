@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 
 interface Proveedor {
@@ -17,7 +18,7 @@ interface PagoProveedorModalProps {
 const PagoProveedorModal: React.FC<PagoProveedorModalProps> = ({ isOpen, onClose, onSuccess, proveedor }) => {
     const [monto, setMonto] = useState<number>(0);
     const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'cheque' | 'cuenta_corriente'>('efectivo');
-    const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+    const [fecha, setFecha] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [referencia, setReferencia] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);

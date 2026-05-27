@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 
 interface Cliente {
@@ -26,7 +27,7 @@ interface CobroModalProps {
 const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cliente }) => {
     const [monto, setMonto] = useState<number>(0);
     const [formaPago, setFormaPago] = useState<'efectivo' | 'transferencia' | 'cheque' | 'icheque'>('efectivo');
-    const [fechaVencimiento, setFechaVencimiento] = useState(new Date().toISOString().split('T')[0]);
+    const [fechaVencimiento, setFechaVencimiento] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [referencia, setReferencia] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -89,7 +90,7 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                     monto: monto,
                     forma_pago: formaPago,
                     referencia: referencia || `Cobro General - ${formaPago.toUpperCase()}`,
-                    fecha: new Date().toISOString().split('T')[0],
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
                     fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
                     estado: 'acreditado',
                     usuario_id: currentUserId
@@ -112,7 +113,7 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                 .from('cuenta_corriente')
                 .insert([{
                     cliente_id: cliente.id,
-                    fecha: new Date().toISOString().split('T')[0],
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
                     tipo: 'pago',
                     concepto: `Cobro General - ${formaPago.toUpperCase()}${referencia ? ` (${referencia})` : ''}`,
                     monto: monto,

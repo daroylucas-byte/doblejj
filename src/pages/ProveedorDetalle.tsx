@@ -249,7 +249,7 @@ const ProveedorDetalle: React.FC = () => {
                 concepto: `Anulación Comp. #${compra.nro_comprobante || compra.id.slice(0, 8)}`,
                 monto: Number(compra.total),
                 saldo_acumulado: nuevoSaldo,
-                fecha: new Date().toISOString().split('T')[0],
+                fecha: format(new Date(), 'yyyy-MM-dd'),
                 usuario_id: user?.id
             });
 
@@ -304,7 +304,7 @@ const ProveedorDetalle: React.FC = () => {
                 .from('cuenta_corriente_proveedores')
                 .insert([{
                     proveedor_id: id,
-                    fecha: new Date().toISOString().split('T')[0],
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
                     tipo,
                     concepto: conceptoAjuste || 'Ajuste de Saldo',
                     monto,
