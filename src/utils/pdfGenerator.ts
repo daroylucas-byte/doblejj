@@ -251,12 +251,12 @@ export const generateClientStatement = (
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text('SALDO FINAL:', pageWidth - margin - 50, finalY);
-        doc.setTextColor(currentBalance < 0 ? 200 : 0, currentBalance < 0 ? 0 : 150, 0); // Red if debt, Green if favor
+        doc.setTextColor(currentBalance > 0 ? 200 : 0, currentBalance > 0 ? 0 : 150, 0); // Red if debt (positive), Green if favor (zero or negative)
         doc.text(`$ ${Math.abs(currentBalance).toLocaleString('es-AR')}`, pageWidth - margin, finalY, { align: 'right' });
-        
+
         doc.setFontSize(9);
         doc.setTextColor(100);
-        doc.text(currentBalance < 0 ? '(Saldo Deudor)' : '(Saldo a Favor)', pageWidth - margin, finalY + 5, { align: 'right' });
+        doc.text(currentBalance > 0 ? '(Saldo Deudor)' : '(Saldo a Favor)', pageWidth - margin, finalY + 5, { align: 'right' });
 
         // Footer
         doc.setFontSize(8);
@@ -376,13 +376,13 @@ export const generateSupplierStatement = (
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
         doc.text('SALDO FINAL:', pageWidth - margin - 50, finalY);
-        // Note: For suppliers, negative balance means we owe them (debt).
-        doc.setTextColor(currentBalance < 0 ? 200 : 0, currentBalance < 0 ? 0 : 150, 0); 
+        // Note: For suppliers, positive balance means we owe them (debt).
+        doc.setTextColor(currentBalance > 0 ? 200 : 0, currentBalance > 0 ? 0 : 150, 0);
         doc.text(`$ ${Math.abs(currentBalance).toLocaleString('es-AR')}`, pageWidth - margin, finalY, { align: 'right' });
-        
+
         doc.setFontSize(9);
         doc.setTextColor(100);
-        doc.text(currentBalance < 0 ? '(Saldo Deudor - Debemos)' : '(Saldo a Favor)', pageWidth - margin, finalY + 5, { align: 'right' });
+        doc.text(currentBalance > 0 ? '(Saldo Deudor - Debemos)' : '(Saldo a Favor)', pageWidth - margin, finalY + 5, { align: 'right' });
 
         // Footer
         doc.setFontSize(8);
