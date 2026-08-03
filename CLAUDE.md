@@ -127,7 +127,9 @@ src/
 
 | Trigger | Qué hace |
 |---|---|
-| `trg_reconciliar_ventas_on_saldo_change` | Al bajar saldo de cliente, aplica pagos FIFO sobre ventas pendientes y las marca `entregada` cuando saldo = 0 |
+| `trg_cc_calcular_saldo` / `trg_ccp_calcular_saldo` | **BEFORE INSERT** — calcula `saldo_acumulado` desde el saldo previo y el `tipo`. Sobreescribe lo que mande el frontend |
+| `cc_sync_saldo` / `ccp_sync_saldo` | AFTER INSERT — copia `saldo_acumulado` a `clientes.saldo_actual` / `proveedores.saldo_actual` |
+| `trg_reconciliar_ventas_on_saldo_change` | Al bajar saldo de cliente, aplica pagos FIFO sobre ventas pendientes y las marca `entregada` cuando saldo = 0. **No actualiza `total_pagado`** — ese campo no es confiable |
 | `handle_stock_on_venta_status_change` | Al cambiar estado de venta, ajusta stock de productos |
 | `handle_venta_entregada_cta_cte` | Al entregar venta, registra movimiento en cuenta corriente |
 
@@ -153,6 +155,28 @@ fecha: new Date().toISOString().split('T')[0] // ❌
 ### Cuenta corriente — fuente de verdad
 - Usar `saldo_acumulado_historico` de `vista_cuenta_corriente` (calculado por trigger)
 - **No usar** `saldo_acumulado` (recalculado dinámico por la vista) — suma mal los ajustes de saldo anterior
+
+### Cuenta corriente — el saldo lo calcula la BD, NUNCA el frontend
+Desde agosto 2026, los triggers `trg_cc_calcular_saldo` / `trg_ccp_calcular_saldo` (BEFORE INSERT)
+calculan `saldo_acumulado` a partir del saldo previo y el `tipo` del movimiento.
+
+Al insertar en `cuenta_corriente` o `cuenta_corriente_proveedores` **solo mandar `tipo` y `monto`**:
+
+```typescript
+// ✅ correcto — la BD calcula el saldo
+await supabase.from('cuenta_corriente').insert({
+    cliente_id, venta_id, tipo: 'pago', concepto, monto: total, fecha, usuario_id
+});
+
+// ❌ nunca calcular el saldo a mano — el trigger lo sobreescribe igual
+saldo_acumulado: saldoBase        // se ignora
+```
+
+Reglas del cálculo: `cargo`/`nota_debito` **suman** `abs(monto)`; `pago`/`nota_credito` **restan** `abs(monto)`.
+El signo del `monto` es indiferente (se normaliza con `abs`) — lo que manda es el `tipo`.
+
+Varias pantallas todavía mandan `saldo_acumulado` por código heredado; es inofensivo (se descarta),
+pero **no copiar ese patrón** en pantallas nuevas.
 
 ### Estados de venta
 `presupuesto` → `pendiente` → `en_distribucion` → `entregada` | `cancelada` | `anulada`
@@ -200,6 +224,18 @@ El módulo de Promociones tiene dos partes:
 ---
 
 ## Bugs corregidos (historial importante)
+
+### Pagos al contado que no descontaban el saldo (agosto 2026)
+- **Causa:** `NuevaVenta.tsx` registraba el pago con `saldo_acumulado: saldoBase` — pero `saldoBase` ya
+  incluía el cargo de la venta (sumado por `handle_venta_cta_cte`), así que faltaba restar el monto.
+  Introducido en el commit `d4cbf96` (12/05/2026), que agregó el registro del pago en cuenta corriente.
+- **Efecto:** 47 ventas al contado dejaron el saldo del cliente inflado. Pasó desapercibido porque un
+  cobro general posterior (que sí calculaba bien) solía absorber el monto fantasma — el cliente terminaba
+  pagando de más sin que la ficha lo mostrara.
+- **Fix:** `saldoBase - total` en `NuevaVenta.tsx`; 197 filas de `cuenta_corriente` y el saldo de 12 clientes
+  corregidos.
+- **Prevención:** migración `calcular_saldo_acumulado_en_trigger` — el saldo ahora lo calcula la BD
+  (ver "el saldo lo calcula la BD" en Convenciones). El error es estructuralmente imposible de repetir.
 
 ### Bug de ventas marcadas como "cancelada" (mayo 2026)
 - **Causa:** trigger `trg_reconciliar_ventas_on_saldo_change` tenía typo `'cancelada'` en lugar de `'entregada'`

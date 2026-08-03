@@ -253,7 +253,7 @@ const NuevaVenta: React.FC = () => {
                     tipo: 'pago',
                     concepto: `Cobro Contado (${formaPago.toUpperCase()}) - Venta #${venta.numero || venta.id.slice(0, 6)}`,
                     monto: total,
-                    saldo_acumulado: saldoBase, // Vuelve al saldo original porque el pago cubre el cargo
+                    saldo_acumulado: saldoBase - total, // Descuenta el pago del saldo generado por el cargo anterior
                     fecha: format(new Date(), 'yyyy-MM-dd'),
                     usuario_id: user?.id
                 });
