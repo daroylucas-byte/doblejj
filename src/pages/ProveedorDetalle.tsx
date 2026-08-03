@@ -232,33 +232,20 @@ const ProveedorDetalle: React.FC = () => {
                 });
             }
 
-            // 3. Registrar nota de crédito en cuenta corriente del proveedor
-            const { data: provData } = await supabase
-                .from('proveedores')
-                .select('saldo_actual')
-                .eq('id', id)
-                .single();
-
-            const saldoActual = provData?.saldo_actual || 0;
-            const nuevoSaldo = saldoActual + Number(compra.total); // Reduce la deuda
-
+            // 3. Registrar nota de crédito en cuenta corriente del proveedor.
+            // El trigger resta el monto (revierte el cargo de la compra) y sincroniza
+            // proveedores.saldo_actual.
             await supabase.from('cuenta_corriente_proveedores').insert({
                 proveedor_id: id,
                 compra_id: compra.id,
                 tipo: 'nota_credito',
                 concepto: `Anulación Comp. #${compra.nro_comprobante || compra.id.slice(0, 8)}`,
                 monto: Number(compra.total),
-                saldo_acumulado: nuevoSaldo,
                 fecha: format(new Date(), 'yyyy-MM-dd'),
                 usuario_id: user?.id
             });
 
-            // 4. Actualizar saldo del proveedor
-            await supabase.from('proveedores')
-                .update({ saldo_actual: nuevoSaldo })
-                .eq('id', id);
-
-            // 5. Marcar la compra como anulada
+            // 4. Marcar la compra como anulada
             const { error: anularErr } = await supabase.from('compras')
                 .update({ estado: 'anulada' })
                 .eq('id', compra.id);
@@ -284,8 +271,15 @@ const ProveedorDetalle: React.FC = () => {
             const inputSaldo = Number(nuevoSaldoReal);
             const targetSaldo = inputSaldo;
 
-            // BUG 2 Note: We still compare against the latest fetched balance to calculate the adjustment delta
-            const currentSaldo = Number(proveedor.saldo_actual);
+            // Releer el saldo de la BD: el trigger calcula el nuevo saldo sumando este delta,
+            // así que un valor viejo en pantalla daría un resultado distinto al pedido.
+            const { data: provActual } = await supabase
+                .from('proveedores')
+                .select('saldo_actual')
+                .eq('id', id)
+                .single();
+
+            const currentSaldo = Number(provActual?.saldo_actual ?? proveedor.saldo_actual);
             const delta = targetSaldo - currentSaldo;
 
             if (delta === 0) {
@@ -298,8 +292,8 @@ const ProveedorDetalle: React.FC = () => {
             const tipo: 'cargo' | 'pago' = delta > 0 ? 'cargo' : 'pago';
             const monto = delta; // El monto se suma directamente al saldo acumulado
 
-            // RE-FIX: Added 'saldo_acumulado' back as the DB constraint requires it.
-            // Even if the view recalculates it for display, the base table still needs the snapshot.
+            // El trigger calcula saldo_acumulado (saldo previo + delta) y sincroniza
+            // proveedores.saldo_actual.
             const { error: insertErr } = await supabase
                 .from('cuenta_corriente_proveedores')
                 .insert([{
@@ -308,19 +302,10 @@ const ProveedorDetalle: React.FC = () => {
                     tipo,
                     concepto: conceptoAjuste || 'Ajuste de Saldo',
                     monto,
-                    saldo_acumulado: targetSaldo,
                     usuario_id: user?.id
                 }]);
 
             if (insertErr) throw insertErr;
-
-            // Actualizar tabla de proveedores
-            const { error: updateErr } = await supabase
-                .from('proveedores')
-                .update({ saldo_actual: targetSaldo })
-                .eq('id', id);
-
-            if (updateErr) throw updateErr;
 
             setShowAjusteModal(false);
             setNuevoSaldoReal('');

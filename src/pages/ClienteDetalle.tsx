@@ -179,7 +179,16 @@ const ClienteDetalle: React.FC = () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             const targetSaldo = Number(nuevoSaldoReal);
-            const currentSaldo = Number(cliente.saldo_actual);
+
+            // Releer el saldo de la BD: el trigger calcula el nuevo saldo sumando este delta,
+            // así que un valor viejo en pantalla daría un resultado distinto al pedido.
+            const { data: clienteActual } = await supabase
+                .from('clientes')
+                .select('saldo_actual')
+                .eq('id', id)
+                .single();
+
+            const currentSaldo = Number(clienteActual?.saldo_actual ?? cliente.saldo_actual);
             const delta = targetSaldo - currentSaldo;
 
             if (delta === 0) {
@@ -202,7 +211,6 @@ const ClienteDetalle: React.FC = () => {
                     tipo,
                     concepto: conceptoAjuste || 'Saldo Anterior',
                     monto,
-                    saldo_acumulado: targetSaldo,
                     usuario_id: user?.id
                 }]);
 

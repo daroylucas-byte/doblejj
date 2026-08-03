@@ -231,16 +231,6 @@ const Ventas: React.FC = () => {
 
             // 2. Adjust Cuenta Corriente if it was confirmed (meaning it had a 'cargo')
             if (venta.estado !== 'presupuesto') {
-                // Get current balance
-                const { data: clientData, error: clientErr } = await supabase
-                    .from('clientes')
-                    .select('saldo_actual')
-                    .eq('id', clientId)
-                    .single();
-                
-                if (clientErr) throw clientErr;
-                const currentSaldo = Number(clientData.saldo_actual) || 0;
-
                 // Insert Nota de Crédito to reverse the original 'cargo'
                 const { error: ccErr } = await supabase
                     .from('cuenta_corriente')
@@ -250,7 +240,6 @@ const Ventas: React.FC = () => {
                         tipo: 'nota_credito',
                         concepto: `Anulación Venta #${venta.numero || venta.id.slice(0, 6)}`,
                         monto: Number(venta.total),
-                        saldo_acumulado: currentSaldo - Number(venta.total),
                         venta_id: venta.id,
                         usuario_id: currentUserId
                     }]);
@@ -277,16 +266,6 @@ const Ventas: React.FC = () => {
             const clientId = selectedVenta.cliente?.id || selectedVenta.cliente_id;
 
             if (!clientId) throw new Error('No se pudo identificar al cliente');
-
-            // 1. Get latest client balance to calculate cumulative balance correctly
-            const { data: clientData, error: clientErr } = await supabase
-                .from('clientes')
-                .select('saldo_actual')
-                .eq('id', clientId)
-                .single();
-            
-            if (clientErr) throw clientErr;
-            let currentSaldo = Number(clientData.saldo_actual) || 0;
 
             // 2. Update quantities if changed
             for (const item of deliveryItems) {
@@ -321,13 +300,11 @@ const Ventas: React.FC = () => {
                         tipo: adjustment > 0 ? 'cargo' : 'nota_credito',
                         concepto: `Ajuste en Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
                         monto: Math.abs(adjustment),
-                        saldo_acumulado: currentSaldo + adjustment,
                         venta_id: selectedVenta.id,
                         usuario_id: currentUserId
                     }]);
-                
+
                 if (adjErr) throw adjErr;
-                currentSaldo += adjustment; 
             }
 
             // 5. Register Payment if any
@@ -360,7 +337,6 @@ const Ventas: React.FC = () => {
                         tipo: 'pago',
                         concepto: `Cobro Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
                         monto: Number(paymentAmount),
-                        saldo_acumulado: currentSaldo - Number(paymentAmount),
                         venta_id: selectedVenta.id,
                         usuario_id: currentUserId
                     }]);

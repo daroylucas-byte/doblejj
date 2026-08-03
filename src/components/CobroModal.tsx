@@ -99,16 +99,8 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
             if (pagoErr) throw pagoErr;
 
             // 2. Registrar el movimiento en Cuenta Corriente
-            // El Trigger de la DB se encargará de actualizar el saldo del cliente 
-            // y reconciliar las facturas de ventas automáticamente (FIFO).
-            const { data: latestCliente } = await supabase
-                .from('clientes')
-                .select('saldo_actual')
-                .eq('id', cliente.id)
-                .single();
-            
-            const currentSaldo = Number(latestCliente?.saldo_actual || cliente.saldo_actual);
-
+            // El trigger calcula saldo_acumulado, actualiza el saldo del cliente
+            // y reconcilia las facturas de ventas automáticamente (FIFO).
             const { error: ccErr } = await supabase
                 .from('cuenta_corriente')
                 .insert([{
@@ -117,7 +109,6 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                     tipo: 'pago',
                     concepto: `Cobro General - ${formaPago.toUpperCase()}${referencia ? ` (${referencia})` : ''}`,
                     monto: monto,
-                    saldo_acumulado: currentSaldo - monto,
                     usuario_id: currentUserId
                 }]);
 

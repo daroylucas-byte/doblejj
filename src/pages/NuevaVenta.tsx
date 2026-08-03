@@ -226,14 +226,6 @@ const NuevaVenta: React.FC = () => {
             // El trigger trg_venta_cta_cte_auto registra el CARGO automáticamente.
             // Aquí solo se registra el PAGO si la venta se cobró en el acto.
             if (formaPago !== 'cuenta_corriente') {
-                const { data: clientData } = await supabase
-                    .from('clientes')
-                    .select('saldo_actual')
-                    .eq('id', selectedCliente.id)
-                    .single();
-
-                const saldoBase = clientData?.saldo_actual || 0;
-
                 // Registrar el Pago en la tabla de pagos (Historial de Cobros / Caja)
                 await supabase.from('pagos').insert({
                     cliente_id: selectedCliente.id,
@@ -253,7 +245,6 @@ const NuevaVenta: React.FC = () => {
                     tipo: 'pago',
                     concepto: `Cobro Contado (${formaPago.toUpperCase()}) - Venta #${venta.numero || venta.id.slice(0, 6)}`,
                     monto: total,
-                    saldo_acumulado: saldoBase - total, // Descuenta el pago del saldo generado por el cargo anterior
                     fecha: format(new Date(), 'yyyy-MM-dd'),
                     usuario_id: user?.id
                 });

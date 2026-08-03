@@ -197,66 +197,38 @@ const NuevaCompra: React.FC = () => {
                 });
 
                 if (balanceErr) {
-                    // Fallback: Obtener el saldo actual del proveedor para calcular el acumulado
-                    const { data: provData } = await supabase
-                        .from('proveedores')
-                        .select('saldo_actual')
-                        .eq('id', selectedProveedor.id)
-                        .single();
-                    
-                    const saldoBase = provData?.saldo_actual || 0;
-                    const nuevoSaldo = saldoBase + montoFinal; // Positive = Debt
-
-                    // 1. Insertar en Movimientos de Cuenta Corriente
+                    // Fallback: el trigger calcula saldo_acumulado y sincroniza proveedores.saldo_actual
                     await supabase.from('cuenta_corriente_proveedores').insert({
                         proveedor_id: selectedProveedor.id,
                         compra_id: compra.id,
                         tipo: 'cargo',
                         concepto: `Factura ${numeroFactura || 'Compra #' + compra.id.slice(0, 8)}`,
                         monto: montoFinal, // Cargo increases debt (positive)
-                        saldo_acumulado: nuevoSaldo, // Saldo después del movimiento
                         fecha: format(new Date(), 'yyyy-MM-dd'),
                         usuario_id: user?.id
                     });
-
-                    // 2. Actualizar el saldo_actual en la tabla proveedores
-                    await supabase.from('proveedores')
-                        .update({ saldo_actual: nuevoSaldo })
-                        .eq('id', selectedProveedor.id);
                 }
             } else {
                 // Se pagó en el acto (Efectivo o Transferencia)
                 
-                // 1. Obtener saldo actual para los registros de CC
-                const { data: provData } = await supabase
-                    .from('proveedores')
-                    .select('saldo_actual')
-                    .eq('id', selectedProveedor.id)
-                    .single();
-                
-                const saldoBase = provData?.saldo_actual || 0;
-                const saldoConCargo = saldoBase + montoFinal;
-
-                // 2. Registrar el CARGO (la compra en sí) en CC
+                // 1. Registrar el CARGO (la compra en sí) en CC
                 await supabase.from('cuenta_corriente_proveedores').insert({
                     proveedor_id: selectedProveedor.id,
                     compra_id: compra.id,
                     tipo: 'cargo',
                     concepto: `Compra Contado - Factura ${numeroFactura || compra.id.slice(0, 8)}`,
                     monto: montoFinal,
-                    saldo_acumulado: saldoConCargo,
                     fecha: format(new Date(), 'yyyy-MM-dd'),
                     usuario_id: user?.id
                 });
 
-                // 3. Registrar el PAGO (la salida de dinero) en CC
+                // 2. Registrar el PAGO (la salida de dinero) en CC
                 await supabase.from('cuenta_corriente_proveedores').insert({
                     proveedor_id: selectedProveedor.id,
                     compra_id: compra.id,
                     tipo: 'pago',
                     concepto: `Pago Contado (${metodoPago.toUpperCase()}) - Factura ${numeroFactura || compra.id.slice(0, 8)}`,
                     monto: -montoFinal, // Negativo para restar deuda
-                    saldo_acumulado: saldoBase, // Vuelve al saldo original
                     fecha: format(new Date(), 'yyyy-MM-dd'),
                     usuario_id: user?.id
                 });
