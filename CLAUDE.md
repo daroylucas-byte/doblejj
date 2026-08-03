@@ -265,13 +265,18 @@ El módulo de Promociones tiene dos partes:
 - ❌ Nunca hacer UPDATE masivo en producción sin rollback o respaldo previo
 - ❌ Nunca usar `saldo_acumulado` de la vista para mostrar el saldo actual del cliente
 - ❌ Nunca asumir que `movimientos_stock` es fuente de verdad para reconstruir stock histórico (tiene datos contaminados por el bug de cancelaciones)
+- ❌ Nunca calcular `saldo_acumulado` en el frontend ni hacer `UPDATE` manual de `saldo_actual` — lo hacen los triggers
+- ❌ Nunca confiar en `ventas.total_pagado` — el trigger FIFO no lo actualiza
 
 ---
 
 ## Pendientes conocidos
 
-- [ ] Habilitar RLS en 9 tablas que lo tienen deshabilitado (`categorias`, `movimientos_stock`, `proveedores`, `compras`, `compra_items`, `categorias_gasto`, `gastos_recurrentes`, `gastos`, `caja_cierres`)
+- [ ] Habilitar RLS en 9 tablas que lo tienen deshabilitado (`categorias`, `movimientos_stock`, `proveedores`, `compras`, `compra_items`, `categorias_gasto`, `gastos_recurrentes`, `gastos`, `caja_cierres`) — **prioritario:** la anon key es pública, RLS es lo único que protege esas tablas
+- [ ] 29 ventas en estado `cancelada` con `total_pagado > 0` — la migración `fix_ventas_canceladas_bug_masivo` sólo corrigió las de `total_pagado = 0`. Las pagadas al ~100% deberían ser `entregada`; las de pago parcial requieren consultar al dueño
+- [ ] `trg_reconciliar_ventas_on_saldo_change` no actualiza `total_pagado` — hace inservible ese campo para reportes
+- [ ] Revisar las 2 anulaciones de compra de SANTIAGO LLADA (jun/jul 2026, $399.668) — no tienen cargo asociado en cuenta corriente, su efecto correcto sobre el saldo no es determinable sin saber cómo se cargaron esas compras
+- [ ] 9 notas de crédito de clientes (mar–may 2026) que no descontaron el saldo — sólo afecta la columna del historial, los saldos actuales están bien
 - [ ] Investigar y corregir compra errónea de Lomo del 06/05/2026 (250.900 kg cargados en lugar de ~250 kg)
 - [ ] Bife de chorizo con stock negativo (-5,75 kg) — requiere ajuste manual
-- [ ] Mergear branch `fix/caja-historial-y-stock` a `main`
 - [ ] Agregar `VITE_GEMINI_API_KEY` en Vercel para que funcione generación de imágenes en producción
