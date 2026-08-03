@@ -4,6 +4,7 @@ import { es } from 'date-fns/locale';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
+import PDFViewerModal from '../components/PDFViewerModal';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { generateSaleTicket } from '../utils/pdfGenerator';
@@ -56,6 +57,21 @@ const Ventas: React.FC = () => {
     const [itemsLoading, setItemsLoading] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+
+    // PDF ticket viewer state
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [showPdfViewer, setShowPdfViewer] = useState(false);
+
+    const handlePrintTicket = (venta: Venta, items: any[], aclaracionTexto?: string) => {
+        try {
+            const url = generateSaleTicket(venta, items, aclaracionTexto);
+            setPdfUrl(url as unknown as string);
+            setShowPdfViewer(true);
+        } catch (error) {
+            console.error('Error generating ticket:', error);
+            alert('Error al generar el ticket');
+        }
+    };
 
     // Delivery state
     const [deliveryItems, setDeliveryItems] = useState<any[]>([]);
@@ -760,8 +776,8 @@ const Ventas: React.FC = () => {
                                             placeholder="Nombre completo..."
                                         />
                                     </div>
-                                    <button 
-                                        onClick={() => generateSaleTicket(selectedVenta, deliveryItems, aclaracion)}
+                                    <button
+                                        onClick={() => handlePrintTicket(selectedVenta, deliveryItems, aclaracion)}
                                         className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-primary text-primary rounded-xl text-xs font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all active:scale-95 shadow-sm"
                                     >
                                         <span className="material-symbols-outlined text-lg">print</span>
@@ -886,8 +902,8 @@ const Ventas: React.FC = () => {
                         {/* Modal Footer */}
                         <div className="p-8 border-t border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-800/30 flex justify-between items-center">
                             <div className="flex items-center gap-3">
-                                <button 
-                                    onClick={() => generateSaleTicket(selectedVenta, ventaItems)}
+                                <button
+                                    onClick={() => handlePrintTicket(selectedVenta, ventaItems)}
                                     className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-100 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-400 hover:text-primary hover:border-primary/20 transition-all active:scale-95"
                                 >
                                     <span className="material-symbols-outlined text-lg">print</span>
@@ -911,6 +927,21 @@ const Ventas: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            <PDFViewerModal
+                isOpen={showPdfViewer}
+                onClose={() => setShowPdfViewer(false)}
+                pdfUrl={pdfUrl}
+                title={selectedVenta ? `Ticket - Orden #${selectedVenta.numero}` : 'Ticket de Venta'}
+                onDownload={() => {
+                    if (pdfUrl) {
+                        const link = document.createElement('a');
+                        link.href = pdfUrl;
+                        link.download = `Ticket-Venta-${selectedVenta?.numero || selectedVenta?.id?.slice(0, 6) || 'S-N'}.pdf`;
+                        link.click();
+                    }
+                }}
+            />
         </Layout>
     );
 };
