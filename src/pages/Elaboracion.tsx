@@ -150,20 +150,17 @@ const Elaboracion: React.FC = () => {
             const shortRef = batchId.slice(0, 8);
             const motivo = `Elaboración [Ref: ${shortRef}] - ${timestamp}`;
 
-            // Process Insumos (Salidas)
+            // Process Insumos (Salidas).
+            // El trigger completa stock_anterior y stock_nuevo leyendo el stock real:
+            // usar el valor que tiene la pantalla en memoria desalineaba el historial.
             for (const item of insumos) {
                 const cantNum = parseFloat(item.cantidad);
                 if (isNaN(cantNum) || cantNum <= 0) continue;
-
-                const stockAnterior = item.stock_actual;
-                const stockNuevo = stockAnterior - cantNum;
 
                 const { error } = await supabase.from('movimientos_stock').insert({
                     producto_id: item.id,
                     tipo: 'salida',
                     cantidad: cantNum,
-                    stock_anterior: stockAnterior,
-                    stock_nuevo: stockNuevo,
                     motivo: motivo,
                     referencia_tipo: 'ajuste_manual'
                 });
@@ -172,15 +169,10 @@ const Elaboracion: React.FC = () => {
             }
 
             // Process Resultado (Entrada)
-            const stockAnteriorRes = productoResultado.stock_actual;
-            const stockNuevoRes = stockAnteriorRes + cantResNum;
-
             const { error: resError } = await supabase.from('movimientos_stock').insert({
                 producto_id: productoResultado.id,
                 tipo: 'entrada',
                 cantidad: cantResNum,
-                stock_anterior: stockAnteriorRes,
-                stock_nuevo: stockNuevoRes,
                 motivo: motivo,
                 referencia_tipo: 'ajuste_manual'
             });

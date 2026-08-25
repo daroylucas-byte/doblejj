@@ -204,27 +204,15 @@ const ProveedorDetalle: React.FC = () => {
                 .eq('compra_id', compra.id);
             if (itemsErr) throw itemsErr;
 
-            // 2. Revertir stock de cada producto
+            // 2. Revertir stock de cada producto.
+            // El trigger calcula stock_anterior y stock_nuevo desde el stock real y
+            // sincroniza productos.stock_actual. No se clampea a 0: si la reversión
+            // deja negativo, es un dato a corregir, no algo que convenga ocultar.
             for (const item of (items || [])) {
-                const { data: prod } = await supabase
-                    .from('productos')
-                    .select('stock_actual')
-                    .eq('id', item.producto_id)
-                    .single();
-
-                const stockAnterior = prod?.stock_actual || 0;
-                const stockNuevo = Math.max(0, stockAnterior - item.cantidad);
-
-                await supabase.from('productos')
-                    .update({ stock_actual: stockNuevo })
-                    .eq('id', item.producto_id);
-
                 await supabase.from('movimientos_stock').insert({
                     producto_id: item.producto_id,
                     tipo: 'salida',
                     cantidad: item.cantidad,
-                    stock_anterior: stockAnterior,
-                    stock_nuevo: stockNuevo,
                     motivo: `Anulación Compra #${compra.nro_comprobante || compra.id.slice(0, 8)}`,
                     referencia_tipo: 'compra',
                     referencia_id: compra.id,

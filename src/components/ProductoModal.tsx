@@ -34,6 +34,7 @@ const ProductoModal: React.FC<ProductoModalProps> = ({ isOpen, onClose, onSucces
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [categorias, setCategorias] = useState<Categoria[]>([]);
+    const [motivoAjuste, setMotivoAjuste] = useState('');
 
     const [formData, setFormData] = useState<Producto>({
         codigo: '',
@@ -56,6 +57,7 @@ const ProductoModal: React.FC<ProductoModalProps> = ({ isOpen, onClose, onSucces
     }, []);
 
     useEffect(() => {
+        setMotivoAjuste('');
         if (producto) {
             setFormData(producto);
         } else {
@@ -106,11 +108,34 @@ const ProductoModal: React.FC<ProductoModalProps> = ({ isOpen, onClose, onSucces
             const { categorias, ...cleanData } = formData as any;
 
             if (producto?.id) {
+                // El stock no se escribe directo: lo calcula la BD a partir de los
+                // movimientos. Si el usuario lo cambió, se registra como ajuste.
+                const { stock_actual, ...datosSinStock } = cleanData;
+                const stockNuevo = Number(stock_actual);
+                const stockPrevio = Number(producto.stock_actual);
+
                 const { error: updateError } = await supabase
                     .from('productos')
-                    .update(cleanData)
+                    .update(datosSinStock)
                     .eq('id', producto.id);
                 if (updateError) throw updateError;
+
+                if (Math.abs(stockNuevo - stockPrevio) > 0.0001) {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    const { error: ajusteError } = await supabase
+                        .from('movimientos_stock')
+                        .insert({
+                            producto_id: producto.id,
+                            tipo: 'ajuste',
+                            // En un ajuste sólo se declara el stock objetivo:
+                            // el trigger deduce la cantidad y el stock anterior reales.
+                            stock_nuevo: stockNuevo,
+                            motivo: motivoAjuste.trim() || 'Ajuste manual de stock',
+                            referencia_tipo: 'ajuste_manual',
+                            usuario_id: user?.id
+                        });
+                    if (ajusteError) throw ajusteError;
+                }
             } else {
                 const { error: insertError } = await supabase
                     .from('productos')
@@ -294,6 +319,24 @@ const ProductoModal: React.FC<ProductoModalProps> = ({ isOpen, onClose, onSucces
                                     />
                                 </div>
                             </div>
+
+                            {producto?.id && Math.abs(Number(formData.stock_actual) - Number(producto.stock_actual)) > 0.0001 && (
+                                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-lg">
+                                    <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-500 uppercase mb-1">
+                                        Motivo del ajuste ({Number(producto.stock_actual)} → {Number(formData.stock_actual)})
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={motivoAjuste}
+                                        onChange={(e) => setMotivoAjuste(e.target.value)}
+                                        placeholder="Opcional: conteo físico, merma, corrección..."
+                                        className="w-full h-9 px-3 bg-white dark:bg-zinc-800 border-none rounded-lg text-sm focus:ring-2 focus:ring-amber-400/50"
+                                    />
+                                    <p className="text-[10px] text-amber-600 dark:text-amber-500/80 mt-1">
+                                        Se registrará en el historial de stock como ajuste manual.
+                                    </p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Column 3: Description & Image */}
