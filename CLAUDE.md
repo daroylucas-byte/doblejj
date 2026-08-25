@@ -130,6 +130,9 @@ src/
 | `trg_cc_calcular_saldo` / `trg_ccp_calcular_saldo` | **BEFORE INSERT** — calcula `saldo_acumulado` desde el saldo previo y el `tipo`. Sobreescribe lo que mande el frontend |
 | `cc_sync_saldo` / `ccp_sync_saldo` | AFTER INSERT — copia `saldo_acumulado` a `clientes.saldo_actual` / `proveedores.saldo_actual` |
 | `trg_reconciliar_ventas_on_saldo_change` | Al bajar saldo de cliente, aplica pagos FIFO sobre ventas pendientes y las marca `entregada` cuando saldo = 0. **No actualiza `total_pagado`** — ese campo no es confiable |
+| `trg_calcular_stock_movimiento` | **BEFORE INSERT** en `movimientos_stock` — calcula `stock_anterior` y `stock_nuevo` desde el stock real. Sobreescribe lo que mande el frontend |
+| `trg_proteger_stock_actual` | **BEFORE UPDATE** en `productos` — revierte en silencio cualquier escritura directa de `stock_actual` |
+| `stock_sync` | AFTER INSERT en `movimientos_stock` — copia `stock_nuevo` a `productos.stock_actual` |
 | `handle_stock_on_venta_status_change` | Al cambiar estado de venta, ajusta stock de productos |
 | `handle_venta_entregada_cta_cte` | Al entregar venta, registra movimiento en cuenta corriente |
 
@@ -177,6 +180,32 @@ El signo del `monto` es indiferente (se normaliza con `abs`) — lo que manda es
 
 Varias pantallas todavía mandan `saldo_acumulado` por código heredado; es inofensivo (se descarta),
 pero **no copiar ese patrón** en pantallas nuevas.
+
+### Stock — lo calcula la BD, NUNCA el frontend
+Desde agosto 2026, `movimientos_stock` es la **única puerta de entrada** al stock.
+`productos.stock_actual` no se puede escribir directo: `trg_proteger_stock_actual`
+revierte el cambio en silencio.
+
+Al registrar un movimiento **solo mandar `tipo`, `cantidad` y `motivo`**:
+
+```typescript
+// ✅ correcto — el trigger completa stock_anterior y stock_nuevo
+await supabase.from('movimientos_stock').insert({
+    producto_id, tipo: 'salida', cantidad, motivo, referencia_tipo, referencia_id, usuario_id
+});
+
+// ✅ ajuste manual: se declara el stock OBJETIVO, el trigger deduce la cantidad
+await supabase.from('movimientos_stock').insert({
+    producto_id, tipo: 'ajuste', stock_nuevo: 0, motivo: 'Conteo físico', referencia_tipo: 'ajuste_manual'
+});
+
+// ❌ nunca escribir el stock a mano — se revierte solo
+await supabase.from('productos').update({ stock_actual: 10 })
+```
+
+Reglas: `entrada`/`devolucion` **suman** `abs(cantidad)`; `salida` **resta** `abs(cantidad)`;
+`ajuste` fija el valor de `stock_nuevo` y calcula la cantidad como diferencia.
+El stock puede quedar negativo — es una señal de dato a corregir, no se clampea a 0.
 
 ### Estados de venta
 `presupuesto` → `pendiente` → `en_distribucion` → `entregada` | `cancelada` | `anulada`
@@ -266,6 +295,7 @@ El módulo de Promociones tiene dos partes:
 - ❌ Nunca usar `saldo_acumulado` de la vista para mostrar el saldo actual del cliente
 - ❌ Nunca asumir que `movimientos_stock` es fuente de verdad para reconstruir stock histórico (tiene datos contaminados por el bug de cancelaciones)
 - ❌ Nunca calcular `saldo_acumulado` en el frontend ni hacer `UPDATE` manual de `saldo_actual` — lo hacen los triggers
+- ❌ Nunca escribir `productos.stock_actual` directo ni calcular `stock_anterior`/`stock_nuevo` en el frontend — se registra un movimiento y lo calcula el trigger
 - ❌ Nunca confiar en `ventas.total_pagado` — el trigger FIFO no lo actualiza
 
 ---
@@ -277,6 +307,7 @@ El módulo de Promociones tiene dos partes:
 - [ ] `trg_reconciliar_ventas_on_saldo_change` no actualiza `total_pagado` — hace inservible ese campo para reportes
 - [ ] Revisar las 2 anulaciones de compra de SANTIAGO LLADA (jun/jul 2026, $399.668) — no tienen cargo asociado en cuenta corriente, su efecto correcto sobre el saldo no es determinable sin saber cómo se cargaron esas compras
 - [ ] 9 notas de crédito de clientes (mar–may 2026) que no descontaron el saldo — sólo afecta la columna del historial, los saldos actuales están bien
-- [ ] Investigar y corregir compra errónea de Lomo del 06/05/2026 (250.900 kg cargados en lugar de ~250 kg)
-- [ ] Bife de chorizo con stock negativo (-5,75 kg) — requiere ajuste manual
+- [ ] 9 productos con stock negativo (Falda deshuesada −9,826 · Matambre vacuno −8,781 · Picaña −3,450 · patita de cerdo −1,954 · Costilla −1,412 y 4 con fracciones) — requieren conteo físico y ajuste manual
+- [x] ~~Compra errónea de Lomo del 06/05/2026 (250.900 kg)~~ — el stock ya fue corregido a mano (hoy 245 kg); el historial de `movimientos_stock` conserva la entrada errónea
+- [x] ~~Bife de chorizo con stock negativo~~ — ya no figura en negativo
 - [ ] Agregar `VITE_GEMINI_API_KEY` en Vercel para que funcione generación de imágenes en producción
