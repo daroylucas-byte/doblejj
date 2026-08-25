@@ -250,9 +250,13 @@ export const generateClientStatement = (
         // Final Summary
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.text('SALDO FINAL:', pageWidth - margin - 50, finalY);
+        // El ancho del monto se mide para ubicar la etiqueta a su izquierda: con una
+        // posicion fija, los saldos largos se superponian sobre el texto.
+        const saldoTexto = `$ ${Math.abs(currentBalance).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+        const saldoAncho = doc.getTextWidth(saldoTexto);
+        doc.text('SALDO FINAL:', pageWidth - margin - saldoAncho - 4, finalY, { align: 'right' });
         doc.setTextColor(currentBalance > 0 ? 200 : 0, currentBalance > 0 ? 0 : 150, 0); // Red if debt (positive), Green if favor (zero or negative)
-        doc.text(`$ ${Math.abs(currentBalance).toLocaleString('es-AR')}`, pageWidth - margin, finalY, { align: 'right' });
+        doc.text(saldoTexto, pageWidth - margin, finalY, { align: 'right' });
 
         doc.setFontSize(9);
         doc.setTextColor(100);
@@ -375,10 +379,14 @@ export const generateSupplierStatement = (
         // Final Summary
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.text('SALDO FINAL:', pageWidth - margin - 50, finalY);
+        // El ancho del monto se mide para ubicar la etiqueta a su izquierda: con una
+        // posicion fija, los saldos largos se superponian sobre el texto.
+        const saldoTexto = `$ ${Math.abs(currentBalance).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+        const saldoAncho = doc.getTextWidth(saldoTexto);
+        doc.text('SALDO FINAL:', pageWidth - margin - saldoAncho - 4, finalY, { align: 'right' });
         // Note: For suppliers, positive balance means we owe them (debt).
         doc.setTextColor(currentBalance > 0 ? 200 : 0, currentBalance > 0 ? 0 : 150, 0);
-        doc.text(`$ ${Math.abs(currentBalance).toLocaleString('es-AR')}`, pageWidth - margin, finalY, { align: 'right' });
+        doc.text(saldoTexto, pageWidth - margin, finalY, { align: 'right' });
 
         doc.setFontSize(9);
         doc.setTextColor(100);
