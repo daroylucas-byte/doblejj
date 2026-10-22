@@ -62,3 +62,8 @@ BEGIN
     RETURN v_nc_id;
 END;
 $function$;
+
+-- Solo usuarios autenticados pueden ejecutarla. Es SECURITY INVOKER: el rol (admin o vendedor)
+-- lo exige la política de INSERT de cuenta_corriente, y si falla se revierte toda la anulación.
+REVOKE EXECUTE ON FUNCTION public.anular_venta(uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.anular_venta(uuid, text, text) TO authenticated;
