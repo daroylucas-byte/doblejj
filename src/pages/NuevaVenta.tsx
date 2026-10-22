@@ -5,7 +5,6 @@ import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import PDFViewerModal from '../components/PDFViewerModal';
 import { supabase } from '../lib/supabase';
-import { useAuthStore } from '../store/authStore';
 import { generateSaleTicket } from '../utils/pdfGenerator';
 
 interface Cliente {
@@ -39,7 +38,6 @@ interface CartItem extends Producto {
 
 const NuevaVenta: React.FC = () => {
     const navigate = useNavigate();
-    const { user } = useAuthStore();
 
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [productos, setProductos] = useState<Producto[]>([]);
@@ -196,73 +194,34 @@ const NuevaVenta: React.FC = () => {
 
         setSaving(true);
         try {
-            const { data: venta, error: ventaErr } = await supabase
-                .from('ventas')
-                .insert([{
-                    cliente_id: selectedCliente.id,
-                    vendedor_id: user?.id,
-                    total: total,
-                    saldo_pendiente: formaPago === 'cuenta_corriente' ? total : 0,
-                    estado: 'en distribucion',
-                    tipo_comprobante: 'ticket',
-                    fecha: format(new Date(), 'yyyy-MM-dd')
-                }])
-                .select()
-                .single();
-
+            // La venta completa (venta, items, cargo y cobro en cuenta corriente, pago y stock) se registra en
+            // UNA sola transacción en la base: si algo falla no queda nada a medias. Los subtotales y el total
+            // guardados salen de los items; el formulario sigue mostrando el cálculo mientras se edita.
+            const { data: ventaId, error: ventaErr } = await supabase.rpc('registrar_venta', {
+                p_cliente_id: selectedCliente.id,
+                p_items: cart.map(item => ({
+                    producto_id: item.id,
+                    cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario
+                })),
+                p_forma_pago: formaPago,
+                p_referencia: referenciaPago || null,
+                p_fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null
+            });
             if (ventaErr) throw ventaErr;
 
-            const itemsToInsert = cart.map(item => ({
-                venta_id: venta.id,
-                producto_id: item.id,
-                cantidad: item.cantidad,
-                precio_unitario: item.precio_unitario,
-                subtotal: item.subtotal
-            }));
+            // El comprobante se arma con lo que quedó guardado en la base
+            const { data: venta, error: lecturaErr } = await supabase.from('ventas').select('*').eq('id', ventaId).single();
+            if (lecturaErr || !venta) throw lecturaErr || new Error('No se pudo leer la venta registrada');
 
-            const { error: itemsErr } = await supabase.from('venta_items').insert(itemsToInsert);
-            if (itemsErr) throw itemsErr;
+            const { data: itemsGuardados } = await supabase
+                .from('venta_items')
+                .select('id, producto_id, cantidad, precio_unitario, subtotal, productos(id, nombre, codigo)')
+                .eq('venta_id', venta.id);
 
-            // El trigger trg_venta_cta_cte_auto registra el CARGO automáticamente.
-            // Aquí solo se registra el PAGO si la venta se cobró en el acto.
-            if (formaPago !== 'cuenta_corriente') {
-                // Registrar el PAGO en Cuenta Corriente para saldar la deuda generada por el cargo anterior
-                const { data: ccMov } = await supabase.from('cuenta_corriente').insert({
-                    cliente_id: selectedCliente.id,
-                    venta_id: venta.id,
-                    tipo: 'pago',
-                    concepto: `Cobro Contado (${formaPago.toUpperCase()}) - Venta #${venta.numero || venta.id.slice(0, 6)}`,
-                    monto: total,
-                    fecha: format(new Date(), 'yyyy-MM-dd'),
-                    usuario_id: user?.id
-                }).select('id').single();
-
-                // Registrar el Pago en la tabla de pagos (Historial de Cobros / Caja),
-                // enlazado al movimiento de CC para poder anularlo después (anular_pago)
-                await supabase.from('pagos').insert({
-                    cliente_id: selectedCliente.id,
-                    venta_id: venta.id,
-                    monto: total,
-                    forma_pago: formaPago,
-                    referencia: referenciaPago || `Pago Contado - Venta #${venta.numero || venta.id.slice(0, 6)}`,
-                    fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
-                    fecha: format(new Date(), 'yyyy-MM-dd'),
-                    usuario_id: user?.id,
-                    movimiento_cc_id: ccMov?.id ?? null
-                });
-            }
-
-            const pdfItems = cart.map(item => ({
-                id: '',
-                producto_id: item.id,
-                cantidad: item.cantidad,
-                precio_unitario: item.precio_unitario,
-                subtotal: item.subtotal,
-                productos: {
-                    id: item.id,
-                    nombre: item.nombre,
-                    codigo: item.codigo || undefined
-                }
+            const pdfItems = (itemsGuardados || []).map((item: any) => ({
+                ...item,
+                productos: Array.isArray(item.productos) ? item.productos[0] : item.productos
             }));
 
             const pdfVenta = {

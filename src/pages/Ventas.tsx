@@ -8,7 +8,6 @@ import PDFViewerModal from '../components/PDFViewerModal';
 import AnularMotivoModal from '../components/AnularMotivoModal';
 import type { MotivoAnulacion } from '../utils/anulaciones';
 import { supabase } from '../lib/supabase';
-import { useAuthStore } from '../store/authStore';
 import { generateSaleTicket } from '../utils/pdfGenerator';
 
 interface Venta {
@@ -51,7 +50,6 @@ const Ventas: React.FC = () => {
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [vendedores, setVendedores] = useState<Vendedor[]>([]);
     const [loading, setLoading] = useState(true);
-    const { user } = useAuthStore();
 
     // Modal state
     const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null);
@@ -235,104 +233,27 @@ const Ventas: React.FC = () => {
         setIsProcessing(true);
 
         try {
-            const currentUserId = user?.id || (await supabase.auth.getUser()).data.user?.id;
-            const clientId = selectedVenta.cliente?.id || selectedVenta.cliente_id;
-
-            if (!clientId) throw new Error('No se pudo identificar al cliente');
-
-            // 2. Update quantities if changed
-            for (const item of deliveryItems) {
-                if (Number(item.cantidad) !== Number(item.cantidad_original)) {
-                    // 1. Update Venta Item
-                    const { error: itemErr } = await supabase
-                        .from('venta_items')
-                        .update({ 
-                            cantidad: item.cantidad,
-                            subtotal: Number(item.cantidad) * Number(item.precio_unitario)
-                        })
-                        .eq('id', item.id);
-                    if (itemErr) throw itemErr;
-                }
+            // Mismo control que hace la base, para avisar antes de salir hacia el servidor
+            if (paymentAmount > 0 && (paymentMethod === 'cheque' || paymentMethod === 'icheque') && !fechaVencimiento) {
+                alert('La fecha de vencimiento es obligatoria para cobros con cheque.');
+                setIsProcessing(false);
+                return;
             }
 
-            // 3. Totals and Balance Calculation
-            const previousTotal = Number(selectedVenta.total);
-            const newTotal = deliveryItems.reduce((sum, item) => sum + (Number(item.cantidad) * Number(item.precio_unitario)), 0);
-            const totalPagadoAnterior = Number(selectedVenta.total_pagado);
-            const newTotalPagado = totalPagadoAnterior + Number(paymentAmount);
-            const newSaldoPendiente = Math.max(0, newTotal - newTotalPagado);
-
-            // 4. Handle Total Adjustment in Client Balance
-            if (newTotal !== previousTotal) {
-                const adjustment = newTotal - previousTotal;
-                const { error: adjErr } = await supabase
-                    .from('cuenta_corriente')
-                    .insert([{
-                        cliente_id: clientId,
-                        fecha: format(new Date(), 'yyyy-MM-dd'),
-                        tipo: adjustment > 0 ? 'cargo' : 'nota_credito',
-                        concepto: `Ajuste en Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
-                        monto: Math.abs(adjustment),
-                        venta_id: selectedVenta.id,
-                        usuario_id: currentUserId
-                    }]);
-
-                if (adjErr) throw adjErr;
-            }
-
-            // 5. Register Payment if any
-            if (paymentAmount > 0) {
-                if ((paymentMethod === 'cheque' || paymentMethod === 'icheque') && !fechaVencimiento) {
-                    alert('La fecha de vencimiento es obligatoria para cobros con cheque.');
-                    setIsProcessing(false);
-                    return;
-                }
-                const { data: ccMov, error: ccErr } = await supabase
-                    .from('cuenta_corriente')
-                    .insert([{
-                        cliente_id: clientId,
-                        fecha: format(new Date(), 'yyyy-MM-dd'),
-                        tipo: 'pago',
-                        concepto: `Cobro Entrega - Venta #${selectedVenta.numero || selectedVenta.id.slice(0, 6)}`,
-                        monto: Number(paymentAmount),
-                        venta_id: selectedVenta.id,
-                        usuario_id: currentUserId
-                    }])
-                    .select('id')
-                    .single();
-
-                if (ccErr) throw ccErr;
-
-                // Enlazado al movimiento de CC para poder anularlo después (anular_pago)
-                const { error: paymentError } = await supabase
-                    .from('pagos')
-                    .insert([{
-                        venta_id: selectedVenta.id,
-                        cliente_id: clientId,
-                        monto: Number(paymentAmount),
-                        forma_pago: paymentMethod,
-                        fecha: format(new Date(), 'yyyy-MM-dd'),
-                        fecha_vencimiento: (paymentMethod === 'cheque' || paymentMethod === 'icheque') ? fechaVencimiento : null,
-                        estado: 'acreditado',
-                        usuario_id: currentUserId,
-                        movimiento_cc_id: ccMov.id
-                    }]);
-
-                if (paymentError) throw paymentError;
-            }
-
-            // 6. Update Sale Status and Balance
-            const { error: updateError } = await supabase
-                .from('ventas')
-                .update({
-                    total: newTotal,
-                    total_pagado: newTotalPagado,
-                    saldo_pendiente: newSaldoPendiente,
-                    estado: deliveryStatus
-                })
-                .eq('id', selectedVenta.id);
-
-            if (updateError) throw updateError;
+            // Toda la entrega (cantidades entregadas, ajuste en cuenta corriente, cobro, pago, y total, saldo y
+            // estado de la venta) se registra en UNA sola transacción en la base: si algo falla no queda nada
+            // a medias. Los totales los calcula la base a partir de los items.
+            const { error: entregaErr } = await supabase.rpc('registrar_entrega', {
+                p_venta_id: selectedVenta.id,
+                p_items: deliveryItems
+                    .filter(item => Number(item.cantidad) !== Number(item.cantidad_original))
+                    .map(item => ({ id: item.id, cantidad: Number(item.cantidad) })),
+                p_pago: Number(paymentAmount) || 0,
+                p_forma_pago: paymentAmount > 0 ? paymentMethod : null,
+                p_fecha_vencimiento: (paymentMethod === 'cheque' || paymentMethod === 'icheque') ? fechaVencimiento : null,
+                p_estado: deliveryStatus
+            });
+            if (entregaErr) throw entregaErr;
 
             await fetchData();
             handleCloseDeliveryModal();
