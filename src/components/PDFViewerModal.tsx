@@ -6,6 +6,7 @@ interface PDFViewerModalProps {
     pdfUrl: string | null;
     title?: string;
     onDownload?: () => void;
+    onShare?: () => void;
 }
 
 const PDFViewerModal: React.FC<PDFViewerModalProps> = ({ 
@@ -13,7 +14,8 @@ const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
     onClose, 
     pdfUrl, 
     title = 'Comprobante de Venta',
-    onDownload
+    onDownload,
+    onShare
 }) => {
     if (!isOpen || !pdfUrl) return null;
 
@@ -33,6 +35,15 @@ const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        {onShare && (
+                            <button
+                                onClick={onShare}
+                                className="h-10 px-4 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-primary/90 transition-all"
+                            >
+                                <span className="material-symbols-outlined text-lg">share</span>
+                                Compartir
+                            </button>
+                        )}
                         {onDownload && (
                             <button 
                                 onClick={onDownload}

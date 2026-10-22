@@ -27,3 +27,23 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase local: dumps con datos reales de clientes, nunca al repo
+supabase/seed.sql
+supabase/schema.sql
+supabase/.temp
+supabase/.branches
+supabase/migrations/20260101000000_remote_schema.sql
+
+# Patrones adicionales de seguridad (auditoria)
+.env.development
+.env.staging
+.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+.claude/settings.local.json
+CLAUDE.local.md

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import ProductoModal from '../components/ProductoModal';
+import CatalogoPDFModal from '../components/CatalogoPDFModal';
 import { supabase } from '../lib/supabase';
 
 interface Categoria {
@@ -37,6 +38,9 @@ const Productos: React.FC = () => {
     const [selectedProducto, setSelectedProducto] = useState<Producto | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
+    // Se guarda el producto completo (no solo el id) para que la selección sobreviva a los cambios de filtro
+    const [seleccionados, setSeleccionados] = useState<Map<string, Producto>>(new Map());
+    const [isCatalogoOpen, setIsCatalogoOpen] = useState(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -76,6 +80,27 @@ const Productos: React.FC = () => {
     const handleEdit = (producto: Producto) => {
         setSelectedProducto(producto);
         setIsModalOpen(true);
+    };
+
+    const toggleSeleccion = (producto: Producto) => {
+        setSeleccionados(prev => {
+            const next = new Map(prev);
+            if (next.has(producto.id)) next.delete(producto.id);
+            else next.set(producto.id, producto);
+            return next;
+        });
+    };
+
+    const productosSeleccionables = productos.filter(p => p.activo);
+    const todosMarcados = productosSeleccionables.length > 0 && productosSeleccionables.every(p => seleccionados.has(p.id));
+
+    const toggleTodos = () => {
+        setSeleccionados(prev => {
+            const next = new Map(prev);
+            if (todosMarcados) productosSeleccionables.forEach(p => next.delete(p.id));
+            else productosSeleccionables.forEach(p => next.set(p.id, p));
+            return next;
+        });
     };
 
     const handleNew = () => {
@@ -144,6 +169,16 @@ const Productos: React.FC = () => {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 dark:bg-zinc-800/50 border-b border-slate-200 dark:border-zinc-800">
+                                    <th className="pl-3 sm:pl-6 py-4 w-8">
+                                        <input
+                                            type="checkbox"
+                                            checked={todosMarcados}
+                                            onChange={toggleTodos}
+                                            disabled={productosSeleccionables.length === 0}
+                                            title="Seleccionar todos los productos activos de la lista"
+                                            className="size-4 rounded accent-primary cursor-pointer"
+                                        />
+                                    </th>
                                     <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest hidden sm:table-cell">Código</th>
                                     <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Producto</th>
                                     <th className="px-3 sm:px-6 py-4 text-[10px] font-black uppercase text-slate-400 tracking-widest hidden md:table-cell">Categoría / Unidad</th>
@@ -156,7 +191,7 @@ const Productos: React.FC = () => {
                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                                 {loading ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center">
+                                        <td colSpan={8} className="px-6 py-12 text-center">
                                             <div className="flex flex-col items-center gap-3">
                                                 <div className="size-8 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></div>
                                                 <span className="text-xs font-bold uppercase text-slate-400 tracking-widest">Sincronizando Catálogo...</span>
@@ -165,7 +200,7 @@ const Productos: React.FC = () => {
                                     </tr>
                                 ) : productos.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                        <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                                             <span className="material-symbols-outlined text-4xl mb-2 block opacity-20">inventory_2</span>
                                             <p className="font-bold text-sm">No se encontraron productos</p>
                                         </td>
@@ -176,6 +211,16 @@ const Productos: React.FC = () => {
                                             key={prod.id}
                                             className={`group hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors ${!prod.activo ? 'opacity-50 grayscale' : ''}`}
                                         >
+                                            <td className="pl-3 sm:pl-6 py-4 w-8">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={seleccionados.has(prod.id)}
+                                                    onChange={() => toggleSeleccion(prod)}
+                                                    disabled={!prod.activo}
+                                                    title={prod.activo ? 'Incluir en catálogo' : 'Producto inactivo'}
+                                                    className="size-4 rounded accent-primary cursor-pointer disabled:cursor-not-allowed"
+                                                />
+                                            </td>
                                             <td className="px-3 sm:px-6 py-4 font-mono text-xs font-black text-primary/70 hidden sm:table-cell">{prod.codigo || 'N/A'}</td>
                                             <td className="px-3 sm:px-6 py-4">
                                                 <div className="flex flex-col">
@@ -245,6 +290,43 @@ const Productos: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {seleccionados.size > 0 && (
+                <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white rounded-2xl shadow-2xl px-4 py-3">
+                    <span className="text-xs font-bold whitespace-nowrap">
+                        {seleccionados.size} {seleccionados.size === 1 ? 'seleccionado' : 'seleccionados'}
+                    </span>
+                    <button
+                        onClick={() => setSeleccionados(new Map())}
+                        className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors"
+                    >
+                        Limpiar
+                    </button>
+                    <button
+                        onClick={() => setIsCatalogoOpen(true)}
+                        className="flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all active:scale-95 whitespace-nowrap"
+                    >
+                        <span className="material-symbols-outlined text-sm">picture_as_pdf</span>
+                        Generar catálogo
+                    </button>
+                </div>
+            )}
+
+            <CatalogoPDFModal
+                isOpen={isCatalogoOpen}
+                onClose={() => setIsCatalogoOpen(false)}
+                productos={Array.from(seleccionados.values()).map(p => ({
+                    id: p.id,
+                    codigo: p.codigo,
+                    nombre: p.nombre,
+                    unidad_medida: p.unidad_medida,
+                    categoria: p.categorias?.nombre || 'General',
+                    precio_minorista: p.precio_minorista,
+                    precio_mayorista: p.precio_mayorista,
+                    precio_revendedor: p.precio_revendedor,
+                    stock_actual: p.stock_actual,
+                }))}
+            />
 
             <ProductoModal
                 isOpen={isModalOpen}

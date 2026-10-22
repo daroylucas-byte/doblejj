@@ -226,7 +226,19 @@ const NuevaVenta: React.FC = () => {
             // El trigger trg_venta_cta_cte_auto registra el CARGO automáticamente.
             // Aquí solo se registra el PAGO si la venta se cobró en el acto.
             if (formaPago !== 'cuenta_corriente') {
-                // Registrar el Pago en la tabla de pagos (Historial de Cobros / Caja)
+                // Registrar el PAGO en Cuenta Corriente para saldar la deuda generada por el cargo anterior
+                const { data: ccMov } = await supabase.from('cuenta_corriente').insert({
+                    cliente_id: selectedCliente.id,
+                    venta_id: venta.id,
+                    tipo: 'pago',
+                    concepto: `Cobro Contado (${formaPago.toUpperCase()}) - Venta #${venta.numero || venta.id.slice(0, 6)}`,
+                    monto: total,
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
+                    usuario_id: user?.id
+                }).select('id').single();
+
+                // Registrar el Pago en la tabla de pagos (Historial de Cobros / Caja),
+                // enlazado al movimiento de CC para poder anularlo después (anular_pago)
                 await supabase.from('pagos').insert({
                     cliente_id: selectedCliente.id,
                     venta_id: venta.id,
@@ -235,18 +247,8 @@ const NuevaVenta: React.FC = () => {
                     referencia: referenciaPago || `Pago Contado - Venta #${venta.numero || venta.id.slice(0, 6)}`,
                     fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
                     fecha: format(new Date(), 'yyyy-MM-dd'),
-                    usuario_id: user?.id
-                });
-
-                // Registrar el PAGO en Cuenta Corriente para saldar la deuda generada por el cargo anterior
-                await supabase.from('cuenta_corriente').insert({
-                    cliente_id: selectedCliente.id,
-                    venta_id: venta.id,
-                    tipo: 'pago',
-                    concepto: `Cobro Contado (${formaPago.toUpperCase()}) - Venta #${venta.numero || venta.id.slice(0, 6)}`,
-                    monto: total,
-                    fecha: format(new Date(), 'yyyy-MM-dd'),
-                    usuario_id: user?.id
+                    usuario_id: user?.id,
+                    movimiento_cc_id: ccMov?.id ?? null
                 });
             }
 

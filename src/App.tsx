@@ -16,9 +16,11 @@ import Caja from './pages/Caja';
 import Elaboracion from './pages/Elaboracion';
 import StockHistorial from './pages/StockHistorial';
 import Promociones from './pages/Promociones';
+import Anulaciones from './pages/Anulaciones';
+import CuentaPendiente from './components/CuentaPendiente';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading } = useAuthStore();
+  const { session, loading, rol } = useAuthStore();
 
   if (loading) {
     return (
@@ -32,6 +34,11 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (!session) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Cuenta recién registrada que todavía no aprobó un administrador
+  if (rol === 'pendiente') {
+    return <CuentaPendiente />;
   }
 
   return <>{children}</>;
@@ -145,6 +152,13 @@ function App() {
         <Route path="/promociones" element={
           <ProtectedRoute>
             <Promociones />
+          </ProtectedRoute>
+        } />
+
+        {/* Provisoria: se elimina al terminar la limpieza de anulaciones */}
+        <Route path="/anulaciones" element={
+          <ProtectedRoute>
+            <Anulaciones />
           </ProtectedRoute>
         } />
 

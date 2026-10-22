@@ -13,7 +13,6 @@ const Register: React.FC = () => {
         email: '',
         password: '',
         confirmPassword: '',
-        role: 'vendedor',
         acceptTerms: false
     });
 
@@ -49,8 +48,7 @@ const Register: React.FC = () => {
                 options: {
                     data: {
                         nombre: nombre,
-                        apellido: apellido,
-                        rol: formData.role
+                        apellido: apellido
                     }
                 }
             });
@@ -138,7 +136,7 @@ const Register: React.FC = () => {
                             {success && (
                                 <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 text-green-700 dark:text-green-400 flex items-center gap-3 rounded-r-lg animate-in fade-in slide-in-from-top-2">
                                     <span className="material-symbols-outlined">check_circle</span>
-                                    <p className="text-sm font-medium">¡Registro exitoso! Redirigiendo al login...</p>
+                                    <p className="text-sm font-medium">¡Cuenta creada! Un administrador debe aprobarla antes de que puedas ingresar. Redirigiendo al login...</p>
                                 </div>
                             )}
 
@@ -212,53 +210,12 @@ const Register: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Role Selection */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-stone-700 dark:text-stone-300 mb-2">Seleccione su Rol</label>
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <label className="cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="role"
-                                                value="vendedor"
-                                                checked={formData.role === 'vendedor'}
-                                                onChange={handleChange}
-                                                className="peer hidden"
-                                            />
-                                            <div className="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all">
-                                                <span className="material-symbols-outlined text-stone-400 peer-checked:text-primary">storefront</span>
-                                                <span className="text-xs font-bold mt-1 text-stone-600 dark:text-stone-400">Vendedor</span>
-                                            </div>
-                                        </label>
-                                        <label className="cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="role"
-                                                value="deposito"
-                                                checked={formData.role === 'deposito'}
-                                                onChange={handleChange}
-                                                className="peer hidden"
-                                            />
-                                            <div className="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all">
-                                                <span className="material-symbols-outlined text-stone-400 peer-checked:text-primary">warehouse</span>
-                                                <span className="text-xs font-bold mt-1 text-stone-600 dark:text-stone-400">Depósito</span>
-                                            </div>
-                                        </label>
-                                        <label className="cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="role"
-                                                value="caja"
-                                                checked={formData.role === 'caja'}
-                                                onChange={handleChange}
-                                                className="peer hidden"
-                                            />
-                                            <div className="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/50 peer-checked:border-primary peer-checked:bg-primary/5 transition-all">
-                                                <span className="material-symbols-outlined text-stone-400 peer-checked:text-primary">payments</span>
-                                                <span className="text-xs font-bold mt-1 text-stone-600 dark:text-stone-400">Caja</span>
-                                            </div>
-                                        </label>
-                                    </div>
+                                {/* El rol lo asigna un administrador al aprobar la cuenta */}
+                                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30">
+                                    <span className="material-symbols-outlined text-amber-600 text-xl">info</span>
+                                    <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                                        Tu cuenta quedará pendiente hasta que un administrador la apruebe y te asigne un rol.
+                                    </p>
                                 </div>
 
                                 {/* Terms and Conditions */}
