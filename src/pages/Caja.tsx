@@ -97,6 +97,7 @@ export default function Caja() {
                 .from('pagos')
                 .select('id, monto, created_at')
                 .eq('forma_pago', 'efectivo')
+                .neq('estado', 'anulado')
                 .gte('created_at', fromDate)
                 .lte('created_at', toDate || new Date().toISOString());
 
@@ -117,7 +118,8 @@ export default function Caja() {
             let queryBancos = supabase
                 .from('pagos')
                 .select('id, monto, forma_pago, created_at')
-                .neq('forma_pago', 'efectivo');
+                .neq('forma_pago', 'efectivo')
+                .neq('estado', 'anulado');
             
             let queryEgresosBancos = supabase
                 .from('gastos')
@@ -223,7 +225,7 @@ export default function Caja() {
             let realFrom = cierresData?.[0]?.fecha_cierre || null;
             let realSaldoIni = cierresData?.[0]?.saldo_real || 0;
 
-            let queryActualPagos = supabase.from('pagos').select('monto, forma_pago');
+            let queryActualPagos = supabase.from('pagos').select('monto, forma_pago').neq('estado', 'anulado');
             let queryActualGastos = supabase.from('gastos').select('monto, forma_pago');
             
             if (realFrom) {

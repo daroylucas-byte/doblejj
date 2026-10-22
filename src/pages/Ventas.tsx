@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import PDFViewerModal from '../components/PDFViewerModal';
+import AnularMotivoModal from '../components/AnularMotivoModal';
+import type { MotivoAnulacion } from '../utils/anulaciones';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { generateSaleTicket } from '../utils/pdfGenerator';
@@ -81,6 +83,7 @@ const Ventas: React.FC = () => {
     const [fechaVencimiento, setFechaVencimiento] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [aclaracion, setAclaracion] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [ventaAAnular, setVentaAAnular] = useState<Venta | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('Todos');
     const [clienteFilter, setClienteFilter] = useState('Todos');
@@ -210,51 +213,21 @@ const Ventas: React.FC = () => {
         setAclaracion('');
     };
 
-    const handleAnularVenta = async (venta: Venta) => {
-        if (!window.confirm(`¿Está seguro que desea ANULAR la Venta #${venta.numero || venta.id.slice(0, 6)}? Esta acción devolverá el stock y ajustará la cuenta corriente.`)) {
-            return;
-        }
+    // La anulación (estado + nota de crédito con motivo) la hace la función anular_venta en una sola
+    // transacción; el trigger de la BD devuelve el stock al pasar a 'cancelada'.
+    const handleAnularVenta = (venta: Venta) => setVentaAAnular(venta);
 
-        setIsProcessing(true);
-        try {
-            const currentUserId = user?.id || (await supabase.auth.getUser()).data.user?.id;
-            const clientId = venta.cliente?.id || venta.cliente_id;
+    const confirmarAnulacionVenta = async (motivo: MotivoAnulacion, detalle: string | null) => {
+        if (!ventaAAnular) return;
+        const { error } = await supabase.rpc('anular_venta', {
+            p_venta_id: ventaAAnular.id,
+            p_motivo: motivo,
+            p_detalle: detalle,
+        });
+        if (error) throw error;
 
-            // 1. Update Sale Status to 'cancelada'
-            // This triggers handle_stock_on_venta_status_change in DB (Restores Stock)
-            const { error: updateError } = await supabase
-                .from('ventas')
-                .update({ estado: 'cancelada' })
-                .eq('id', venta.id);
-
-            if (updateError) throw updateError;
-
-            // 2. Adjust Cuenta Corriente if it was confirmed (meaning it had a 'cargo')
-            if (venta.estado !== 'presupuesto') {
-                // Insert Nota de Crédito to reverse the original 'cargo'
-                const { error: ccErr } = await supabase
-                    .from('cuenta_corriente')
-                    .insert([{
-                        cliente_id: clientId,
-                        fecha: format(new Date(), 'yyyy-MM-dd'),
-                        tipo: 'nota_credito',
-                        concepto: `Anulación Venta #${venta.numero || venta.id.slice(0, 6)}`,
-                        monto: Number(venta.total),
-                        venta_id: venta.id,
-                        usuario_id: currentUserId
-                    }]);
-
-                if (ccErr) throw ccErr;
-            }
-
-            alert('Venta anulada con éxito. El stock ha sido devuelto.');
-            await fetchData();
-        } catch (err: any) {
-            console.error('Error annulling sale:', err);
-            alert('Error al anular la venta: ' + err.message);
-        } finally {
-            setIsProcessing(false);
-        }
+        alert('Venta anulada con éxito. El stock ha sido devuelto.');
+        await fetchData();
     };
 
     const handleProcessDelivery = async () => {
@@ -314,22 +287,7 @@ const Ventas: React.FC = () => {
                     setIsProcessing(false);
                     return;
                 }
-                const { error: paymentError } = await supabase
-                    .from('pagos')
-                    .insert([{
-                        venta_id: selectedVenta.id,
-                        cliente_id: clientId,
-                        monto: Number(paymentAmount),
-                        forma_pago: paymentMethod,
-                        fecha: new Date().toISOString(),
-                        fecha_vencimiento: (paymentMethod === 'cheque' || paymentMethod === 'icheque') ? fechaVencimiento : null,
-                        estado: 'acreditado',
-                        usuario_id: currentUserId
-                    }]);
-                
-                if (paymentError) throw paymentError;
-
-                const { error: ccErr } = await supabase
+                const { data: ccMov, error: ccErr } = await supabase
                     .from('cuenta_corriente')
                     .insert([{
                         cliente_id: clientId,
@@ -339,9 +297,28 @@ const Ventas: React.FC = () => {
                         monto: Number(paymentAmount),
                         venta_id: selectedVenta.id,
                         usuario_id: currentUserId
-                    }]);
+                    }])
+                    .select('id')
+                    .single();
 
                 if (ccErr) throw ccErr;
+
+                // Enlazado al movimiento de CC para poder anularlo después (anular_pago)
+                const { error: paymentError } = await supabase
+                    .from('pagos')
+                    .insert([{
+                        venta_id: selectedVenta.id,
+                        cliente_id: clientId,
+                        monto: Number(paymentAmount),
+                        forma_pago: paymentMethod,
+                        fecha: format(new Date(), 'yyyy-MM-dd'),
+                        fecha_vencimiento: (paymentMethod === 'cheque' || paymentMethod === 'icheque') ? fechaVencimiento : null,
+                        estado: 'acreditado',
+                        usuario_id: currentUserId,
+                        movimiento_cc_id: ccMov.id
+                    }]);
+
+                if (paymentError) throw paymentError;
             }
 
             // 6. Update Sale Status and Balance
@@ -917,6 +894,16 @@ const Ventas: React.FC = () => {
                         link.click();
                     }
                 }}
+            />
+
+            <AnularMotivoModal
+                isOpen={!!ventaAAnular}
+                onClose={() => setVentaAAnular(null)}
+                titulo="Anular venta"
+                resumen={ventaAAnular ? `Venta #${ventaAAnular.numero || ventaAAnular.id.slice(0, 6)} · $ ${Number(ventaAAnular.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : ''}
+                advertencia="Se devuelve el stock y se descuenta el importe de la cuenta corriente del cliente."
+                textoBoton="Anular venta"
+                onConfirm={confirmarAnulacionVenta}
             />
         </Layout>
     );

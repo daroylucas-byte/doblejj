@@ -16,6 +16,7 @@ import Caja from './pages/Caja';
 import Elaboracion from './pages/Elaboracion';
 import StockHistorial from './pages/StockHistorial';
 import Promociones from './pages/Promociones';
+import Anulaciones from './pages/Anulaciones';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading } = useAuthStore();
@@ -145,6 +146,13 @@ function App() {
         <Route path="/promociones" element={
           <ProtectedRoute>
             <Promociones />
+          </ProtectedRoute>
+        } />
+
+        {/* Provisoria: se elimina al terminar la limpieza de anulaciones */}
+        <Route path="/anulaciones" element={
+          <ProtectedRoute>
+            <Anulaciones />
           </ProtectedRoute>
         } />
 

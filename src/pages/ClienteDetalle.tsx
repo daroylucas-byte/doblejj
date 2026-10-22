@@ -4,8 +4,11 @@ import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
 import PDFViewerModal from '../components/PDFViewerModal';
+import AnularPagoModal from '../components/AnularPagoModal';
 import { supabase } from '../lib/supabase';
 import { generateClientStatement, generateSaleTicket } from '../utils/pdfGenerator';
+import { ocultarCorreccionesPorError, MOTIVOS_ANULACION } from '../utils/anulaciones';
+import type { AnulacionCC } from '../utils/anulaciones';
 
 interface Cliente {
     id: string;
@@ -64,6 +67,11 @@ const ClienteDetalle: React.FC = () => {
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [pdfVentaNumero, setPdfVentaNumero] = useState<string>('');
 
+    // Anulación de pagos: los errores de carga se ocultan por defecto para no ensuciar la lectura
+    const [anulaciones, setAnulaciones] = useState<AnulacionCC[]>([]);
+    const [ocultarErrores, setOcultarErrores] = useState(true);
+    const [pagoAAnular, setPagoAAnular] = useState<Movimiento | null>(null);
+
     // Ajuste de Saldo States
     const [showAjusteModal, setShowAjusteModal] = useState(false);
     const [nuevoSaldoReal, setNuevoSaldoReal] = useState<string>('');
@@ -120,6 +128,14 @@ const ClienteDetalle: React.FC = () => {
                 saldo_acumulado: m.saldo_acumulado_historico,
             }));
             setMovimientos(movsNormalizados);
+
+            // 3.0 Anulaciones del cliente (sin filtro de fechas: hace falta ver ambos lados del par)
+            const { data: anulacionesData } = await supabase
+                .from('cuenta_corriente')
+                .select('id, revierte_a, anulacion_motivo, anulacion_tardia')
+                .eq('cliente_id', id)
+                .not('revierte_a', 'is', null);
+            setAnulaciones((anulacionesData || []) as AnulacionCC[]);
 
             // 3.1 Update client balance from the latest movement (uses trigger-computed value)
             if (movsNormalizados.length > 0 && !startDate && !endDate) {
@@ -286,6 +302,12 @@ const ClienteDetalle: React.FC = () => {
     }
 
     if (!cliente) return <Layout><div>Error: Cliente no encontrado</div></Layout>;
+
+    // Lo que se muestra y se imprime: sin los pares marcados como error de carga (si el filtro está activo)
+    const movimientosVisibles = ocultarErrores ? ocultarCorreccionesPorError(movimientos, anulaciones) : movimientos;
+    const anuladosPorId = new Map(anulaciones.filter(a => a.revierte_a).map(a => [a.revierte_a as string, a]));
+    const correccionesPorId = new Map(anulaciones.map(a => [a.id, a]));
+    const hayErroresOcultables = anulaciones.some(a => a.anulacion_motivo === 'error_carga');
 
     return (
         <Layout>
@@ -491,8 +513,19 @@ const ClienteDetalle: React.FC = () => {
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between mb-4">
                                             <h4 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">Movimientos Recientes</h4>
-                                            <button 
-                                                onClick={() => generateClientStatement(cliente, movimientos, startDate, endDate)}
+                                            {hayErroresOcultables && (
+                                                <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={ocultarErrores}
+                                                        onChange={(e) => setOcultarErrores(e.target.checked)}
+                                                        className="size-4 rounded accent-primary"
+                                                    />
+                                                    Ocultar correcciones por error
+                                                </label>
+                                            )}
+                                            <button
+                                                onClick={() => generateClientStatement(cliente, movimientosVisibles, startDate, endDate)}
                                                 className="h-8 px-4 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-md shadow-primary/20 hover:scale-95 transition-all"
                                             >
                                                 Exportar PDF
@@ -508,17 +541,32 @@ const ClienteDetalle: React.FC = () => {
                                                         <th className="py-3 text-right">Debe</th>
                                                         <th className="py-3 text-right">Haber</th>
                                                         <th className="py-3 text-right">Saldo</th>
+                                                        <th className="py-3 w-14"></th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-50 dark:divide-zinc-800">
-                                                    {movimientos.map(m => {
+                                                    {movimientosVisibles.map(m => {
                                                         const isDebe = m.tipo === 'cargo' || m.tipo === 'nota_debito';
                                                         const isHaber = m.tipo === 'pago' || m.tipo === 'nota_credito';
-                                                        
+                                                        const anulacion = anuladosPorId.get(m.id);
+                                                        const correccion = correccionesPorId.get(m.id);
+                                                        const etiquetaMotivo = (motivo: string | null | undefined) =>
+                                                            MOTIVOS_ANULACION.find(x => x.value === motivo)?.label ?? '';
+
                                                         return (
-                                                            <tr key={m.id} className="text-sm group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10 transition-colors">
+                                                            <tr key={m.id} className={`text-sm group hover:bg-slate-50/50 dark:hover:bg-zinc-800/10 transition-colors ${anulacion ? 'opacity-60' : ''}`}>
                                                                 <td className="py-3 text-slate-500">{format(parseISO(m.fecha), 'dd/MM/yyyy')}</td>
-                                                                <td className="py-3 font-bold text-slate-700 dark:text-zinc-200">{m.concepto}</td>
+                                                                <td className="py-3 font-bold text-slate-700 dark:text-zinc-200">
+                                                                    <span className={anulacion ? 'line-through' : ''}>{m.concepto}</span>
+                                                                    {anulacion && (
+                                                                        <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-200 text-slate-600 no-underline">
+                                                                            Anulado · {etiquetaMotivo(anulacion.anulacion_motivo)}
+                                                                        </span>
+                                                                    )}
+                                                                    {correccion && correccion.anulacion_tardia && (
+                                                                        <span className="ml-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-700">Tardía</span>
+                                                                    )}
+                                                                </td>
                                                                 <td className="py-3 capitalize">
                                                                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${isHaber ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                                                         {m.tipo.replace('_', ' ')}
@@ -533,12 +581,24 @@ const ClienteDetalle: React.FC = () => {
                                                                 <td className={`py-3 text-right font-black ${m.saldo_acumulado > 0 ? 'text-red-500' : 'text-primary'}`}>
                                                                     $ {Math.abs(m.saldo_acumulado).toLocaleString()}
                                                                 </td>
+                                                                <td className="py-3 text-right">
+                                                                    {m.tipo === 'pago' && !anulacion && (
+                                                                        <button
+                                                                            onClick={() => setPagoAAnular(m)}
+                                                                            title="Anular pago"
+                                                                            className="flex flex-col items-center px-1.5 py-1 text-slate-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10"
+                                                                        >
+                                                                            <span className="material-symbols-outlined text-base">cancel</span>
+                                                                            <span className="text-[8px] font-black uppercase tracking-wider leading-none mt-0.5">Anular</span>
+                                                                        </button>
+                                                                    )}
+                                                                </td>
                                                             </tr>
                                                         );
                                                     })}
-                                                    {movimientos.length === 0 && (
+                                                    {movimientosVisibles.length === 0 && (
                                                         <tr>
-                                                            <td colSpan={6} className="py-12 text-center text-slate-400 font-bold italic">No hay movimientos registrados</td>
+                                                            <td colSpan={7} className="py-12 text-center text-slate-400 font-bold italic">No hay movimientos registrados</td>
                                                         </tr>
                                                     )}
                                                 </tbody>
@@ -711,6 +771,13 @@ const ClienteDetalle: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            <AnularPagoModal
+                isOpen={!!pagoAAnular}
+                onClose={() => setPagoAAnular(null)}
+                onSuccess={fetchData}
+                movimiento={pagoAAnular}
+            />
 
             <PDFViewerModal
                 isOpen={showPdfViewer}

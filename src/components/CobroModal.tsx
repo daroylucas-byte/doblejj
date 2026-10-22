@@ -80,28 +80,10 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
             const { data: { user } } = await supabase.auth.getUser();
             const currentUserId = user?.id;
 
-            // 1. Registrar el pago en la tabla de pagos (para el historial de recibos)
-            // Lo registramos como un pago general si hay múltiples ventas o excedente
-            const { error: pagoErr } = await supabase
-                .from('pagos')
-                .insert([{
-                    venta_id: null, 
-                    cliente_id: cliente.id,
-                    monto: monto,
-                    forma_pago: formaPago,
-                    referencia: referencia || `Cobro General - ${formaPago.toUpperCase()}`,
-                    fecha: format(new Date(), 'yyyy-MM-dd'),
-                    fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
-                    estado: 'acreditado',
-                    usuario_id: currentUserId
-                }]);
-
-            if (pagoErr) throw pagoErr;
-
-            // 2. Registrar el movimiento en Cuenta Corriente
+            // 1. Registrar el movimiento en Cuenta Corriente
             // El trigger calcula saldo_acumulado, actualiza el saldo del cliente
             // y reconcilia las facturas de ventas automáticamente (FIFO).
-            const { error: ccErr } = await supabase
+            const { data: ccMov, error: ccErr } = await supabase
                 .from('cuenta_corriente')
                 .insert([{
                     cliente_id: cliente.id,
@@ -110,9 +92,31 @@ const CobroModal: React.FC<CobroModalProps> = ({ isOpen, onClose, onSuccess, cli
                     concepto: `Cobro General - ${formaPago.toUpperCase()}${referencia ? ` (${referencia})` : ''}`,
                     monto: monto,
                     usuario_id: currentUserId
-                }]);
+                }])
+                .select('id')
+                .single();
 
             if (ccErr) throw ccErr;
+
+            // 2. Registrar el pago en la tabla de pagos (para el historial de recibos),
+            // enlazado al movimiento de CC para poder anularlo después (anular_pago).
+            // Lo registramos como un pago general si hay múltiples ventas o excedente
+            const { error: pagoErr } = await supabase
+                .from('pagos')
+                .insert([{
+                    venta_id: null,
+                    cliente_id: cliente.id,
+                    monto: monto,
+                    forma_pago: formaPago,
+                    referencia: referencia || `Cobro General - ${formaPago.toUpperCase()}`,
+                    fecha: format(new Date(), 'yyyy-MM-dd'),
+                    fecha_vencimiento: (formaPago === 'cheque' || formaPago === 'icheque') ? fechaVencimiento : null,
+                    estado: 'acreditado',
+                    usuario_id: currentUserId,
+                    movimiento_cc_id: ccMov.id
+                }]);
+
+            if (pagoErr) throw pagoErr;
 
             alert(`Cobro de $${monto.toLocaleString()} registrado con éxito.`);
             onSuccess();
