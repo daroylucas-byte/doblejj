@@ -10,7 +10,7 @@ RETURNS void
 LANGUAGE plpgsql
 -- DEFINER: pagos y cuenta_corriente no tienen política de UPDATE para los usuarios de la app
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $function$
 DECLARE
     v_nc cuenta_corriente%ROWTYPE;

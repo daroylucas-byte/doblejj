@@ -20,7 +20,7 @@ CREATE OR REPLACE FUNCTION public.calcular_stock_movimiento()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $function$
 DECLARE
   stock_previo NUMERIC;
@@ -48,7 +48,7 @@ CREATE OR REPLACE FUNCTION public.sync_stock_producto()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $function$
 BEGIN
   PERFORM set_config('app.sync_stock', 'on', true);

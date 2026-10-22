@@ -18,7 +18,7 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $function$
     SELECT EXISTS (
         SELECT 1 FROM public.profiles
