@@ -10,7 +10,7 @@
 | **Supabase project-ref** | `txyqovlcftvgthqvfpxk` |
 | **Repo GitHub** | `https://github.com/daroylucas-byte/doblejj` |
 | **Branch principal** | `main` |
-| **Branch activo** | `fix/caja-historial-y-stock` |
+| **Flujo de trabajo** | Una rama por cambio (`feat/…`, `fix/…`, `docs/…`) → Pull Request → merge a `main`. **Mergear a `main` publica en producción** (Vercel despliega desde `main`) |
 | **Deploy** | Vercel (proyecto `doblejj`) |
 | **Estado** | Producción activa |
 
@@ -41,11 +41,16 @@ src/
 ├── pages/          # Una página por ruta
 ├── components/     # Modales y componentes reutilizables
 ├── hooks/          # Custom hooks (ej: useSistemaCreditos)
-├── utils/          # pdfGenerator.ts, promoImageGenerator.ts
+├── store/          # authStore.ts (sesión y rol del perfil)
+├── utils/          # pdfGenerator.ts, promoImageGenerator.ts, anulaciones.ts
 ├── lib/
 │   ├── supabase.ts        # Cliente Supabase
 │   └── database.types.ts  # Tipos generados de Supabase
 └── App.tsx         # Rutas protegidas con <ProtectedRoute>
+
+supabase/
+├── config.toml     # Configuración del Supabase local (CLI + Docker)
+└── migrations/     # Migraciones SQL (ver "Migraciones y publicación")
 ```
 
 ---
@@ -62,12 +67,14 @@ src/
 | `/proveedores` | Proveedores | Listado de proveedores |
 | `/proveedores/:id` | ProveedorDetalle | Ficha y cuenta corriente del proveedor |
 | `/compras/nueva` | NuevaCompra | Registro de compra a proveedor |
-| `/productos` | Productos | ABM de productos con stock |
+| `/productos` | Productos | ABM de productos con stock. Selección de productos para generar el **catálogo PDF** |
 | `/stock` | StockHistorial | Historial de movimientos de stock |
 | `/elaboracion` | Elaboracion | Producción interna |
 | `/caja` | Caja | Apertura/cierre y movimientos de caja |
 | `/promociones` | Promociones | Gestión de promos generadas por IA |
+| `/anulaciones` | Anulaciones | **PROVISORIA** (etapa de limpieza hasta ~21/11/2026): registro de anulaciones y clasificación de las históricas. Se elimina después (ruta, menú y página; la base no cambia) |
 | `/login` | Login | Autenticación |
+| `/register` | Register | Alta de usuario: queda `pendiente` hasta que un administrador lo apruebe |
 
 ---
 
@@ -80,7 +87,11 @@ src/
 | `ClienteModal` | Crear/editar cliente |
 | `ProveedorModal` | Crear/editar proveedor |
 | `ProductoModal` | Crear/editar producto |
-| `PDFViewerModal` | Visualizar PDF generado antes de descargar |
+| `PDFViewerModal` | Visualizar PDF generado antes de descargar (con botón Compartir opcional) |
+| `CatalogoPDFModal` | Opciones del catálogo PDF (tipo de precio, título) y vista previa |
+| `AnularMotivoModal` | Modal genérico de motivo de anulación (error de carga, cheque rechazado, devolución, otro) |
+| `AnularPagoModal` | Anular un pago desde la ficha del cliente (usa `AnularMotivoModal`) |
+| `CuentaPendiente` | Cartel que ve un usuario recién registrado hasta que lo aprueben |
 | `Layout` + `Sidebar` | Shell de la app con navegación lateral |
 | `MainHeader` | Header de cada página |
 
@@ -112,7 +123,8 @@ src/
 | `promociones_sugeridas` | Promos generadas por IA (n8n + GPT-4o) |
 | `sistema_creditos` | Saldo de créditos IA (única fila, compartido) |
 | `sistema_creditos_movimientos` | Historial de consumo de créditos IA |
-| `profiles` | Perfiles de usuarios autenticados |
+| `profiles` | Perfiles de usuarios autenticados. `rol` ∈ `admin`, `vendedor`, `deposito`, `caja`, `pendiente`; `activo` |
+| `config_anulaciones` | Configuración de la ventana de limpieza de anulaciones (una fila: `limpieza_hasta`, `limite_dias`) |
 
 ### Vistas
 
@@ -120,8 +132,12 @@ src/
 |---|---|
 | `vista_cuenta_corriente` | CC de clientes con `saldo_acumulado` recalculado dinámicamente |
 | `vista_cuenta_corriente_proveedores` | CC de proveedores |
-| `vista_productos_para_promociones` | Productos con clasificación de stock para n8n |
-| `vista_combos_frecuentes` | Pares de productos comprados juntos (para n8n) |
+| `vista_cuenta_corriente_resumen` | **La que usa la ficha del cliente.** Movimientos con `saldo_acumulado_historico`, `oculto_en_resumen`, `saldo_resumen` (saldo sin el efecto de los errores de carga corregidos), `anulado_motivo`, `anulacion_tardia` |
+| `vista_anulaciones_estadisticas` | Conteos de la pantalla `/anulaciones` (total, tardías, por motivo, por usuario, sin clasificar) |
+| `vista_productos_para_promociones` | Productos con clasificación de stock (la usaba n8n) |
+| `vista_combos_frecuentes` | Pares de productos comprados juntos (la usaba n8n) |
+
+**Todas las vistas son `security_invoker = true`**: respetan el RLS de quien consulta. Nunca crear una vista `SECURITY DEFINER` en `public`.
 
 ### Triggers críticos
 
@@ -130,11 +146,40 @@ src/
 | `trg_cc_calcular_saldo` / `trg_ccp_calcular_saldo` | **BEFORE INSERT** — calcula `saldo_acumulado` desde el saldo previo y el `tipo`. Sobreescribe lo que mande el frontend |
 | `cc_sync_saldo` / `ccp_sync_saldo` | AFTER INSERT — copia `saldo_acumulado` a `clientes.saldo_actual` / `proveedores.saldo_actual` |
 | `trg_reconciliar_ventas_on_saldo_change` | Al bajar saldo de cliente, aplica pagos FIFO sobre ventas pendientes y las marca `entregada` cuando saldo = 0. **No actualiza `total_pagado`** — ese campo no es confiable |
-| `trg_calcular_stock_movimiento` | **BEFORE INSERT** en `movimientos_stock` — calcula `stock_anterior` y `stock_nuevo` desde el stock real. Sobreescribe lo que mande el frontend |
+| `trg_calcular_stock_movimiento` | **BEFORE INSERT** en `movimientos_stock` — calcula `stock_anterior` y `stock_nuevo` desde el stock real. Sobreescribe lo que mande el frontend. **`SECURITY DEFINER`** (ver Bugs corregidos: con permisos del usuario, un vendedor calculaba el stock desde 0) |
 | `trg_proteger_stock_actual` | **BEFORE UPDATE** en `productos` — revierte en silencio cualquier escritura directa de `stock_actual` |
-| `stock_sync` | AFTER INSERT en `movimientos_stock` — copia `stock_nuevo` a `productos.stock_actual` |
+| `stock_sync` | AFTER INSERT en `movimientos_stock` — copia `stock_nuevo` a `productos.stock_actual`. **`SECURITY DEFINER`**: así la venta de un vendedor mueve el stock aunque `productos` solo deje actualizar a admin/depósito |
 | `handle_stock_on_venta_status_change` | Al cambiar estado de venta, ajusta stock de productos |
 | `handle_venta_entregada_cta_cte` | Al entregar venta, registra movimiento en cuenta corriente |
+| `on_auth_user_created` (en `auth.users`) | Crea el perfil con `handle_new_user`: **siempre `pendiente` e inactivo**, ignora cualquier rol que mande el cliente. En la base local hay que crearlo a mano (el volcado trae solo el esquema `public`) |
+
+### Funciones (RPC) que usa el frontend
+
+| Función | Qué hace | Tipo |
+|---|---|---|
+| `registrar_venta(cliente, items, forma_pago, referencia, fecha_venc)` | Venta nueva **atómica**: venta + ítems + cobro en CC + pago enlazado. El stock y el cargo los hacen los triggers. Total y subtotales salen de los ítems | INVOKER |
+| `registrar_entrega(venta, items, pago, forma_pago, fecha_venc, estado)` | Entrega **atómica**: cantidades, ajuste en CC, cobro, pago, total/saldo/estado de la venta. Misma lógica que tenía el front. **No reajusta el stock** al editar cantidades | INVOKER |
+| `anular_venta(venta, motivo, detalle)` | Anula una venta (estado `cancelada` + nota de crédito enlazada con motivo). El trigger devuelve el stock | INVOKER |
+| `anular_movimiento_pago(movimiento_cc, motivo, detalle)` | Anula un pago: `nota_debito` enlazada + `pagos.estado = 'anulado'`. Funciona también con pagos viejos sin enlace (coincidencia única o solo en CC). Valida rol admin/vendedor | DEFINER |
+| `clasificar_anulacion_historica(nota_credito, motivo, detalle)` | Etiqueta una anulación de venta anterior al sistema de motivos (solo agrega la etiqueta). Valida rol admin/vendedor | DEFINER |
+| `update_supplier_balance(prov_id, amount, is_payment)` | Heredada, la usa `NuevaCompra`. Su resultado correcto depende de los triggers de CC de proveedores | INVOKER |
+
+---
+
+## Seguridad y roles
+
+**Regla de oro: la anon key es pública (va al bundle y está en el historial de git). La seguridad es RLS + permisos, nada más.**
+
+- **El rol `anon` no tiene permisos sobre nada del esquema `public`** (tablas, vistas, secuencias ni funciones; tampoco los objetos futuros). Login y registro usan el esquema `auth`.
+- **Todas las tablas tienen RLS.** Nunca crear una tabla sin habilitarlo y sin políticas.
+- **Roles**: `admin`, `vendedor`, `deposito`, `caja` (personal) y `pendiente` (sin ningún privilegio). `private.es_personal()` (esquema `private`, no expuesto por la API) devuelve true si el usuario está `activo` y tiene un rol de personal; es el filtro de lectura y escritura de casi todo.
+- **Las 9 tablas internas** (`caja_cierres`, `categorias`, `categorias_gasto`, `compra_items`, `compras`, `gastos`, `gastos_recurrentes`, `movimientos_stock`, `proveedores`): lectura, alta y modificación para todo el personal; **nadie borra** (el front no borra nada ahí). Se dejó igual para todos los roles a propósito: los triggers corren con los permisos de quien dispara la acción y una política más fina por rol los rompe en silencio. Afinar por rol es un pendiente.
+- **Escritura por rol heredada** (se conserva): `clientes` alta/modificación admin+vendedor, baja admin; `productos` alta/modificación admin+depósito, baja admin; `cuenta_corriente` y `pagos` alta admin+vendedor; `cuenta_corriente_proveedores` y `pagos_proveedores` alta admin+caja. `ventas`/`venta_items`: personal.
+- **Alta de usuarios**: quien se registra queda `pendiente` e inactivo. Un administrador lo aprueba con SQL:
+  `UPDATE profiles SET rol = 'vendedor', activo = true WHERE id = (SELECT id FROM auth.users WHERE email = '…');`
+  Nunca tomar el rol de `raw_user_meta_data` ni de nada que mande el cliente.
+- **Funciones `SECURITY DEFINER`**: siempre con `SET search_path = public, pg_temp` y, si son llamables por la API, con verificación de rol adentro y `REVOKE EXECUTE … FROM PUBLIC, anon`. Las de trigger no deben ser ejecutables por la API. Hoy: `anular_movimiento_pago`, `clasificar_anulacion_historica`, `handle_new_user`, `private.es_personal`, `calcular_stock_movimiento`, `sync_stock_producto`.
+- Las funciones nuevas que escriban en tablas con RLS prefieren `SECURITY INVOKER` (que las políticas sigan decidiendo); `DEFINER` solo cuando la tabla no tiene política de UPDATE y la función es el único camino controlado.
 
 ---
 
@@ -207,6 +252,23 @@ Reglas: `entrada`/`devolucion` **suman** `abs(cantidad)`; `salida` **resta** `ab
 `ajuste` fija el valor de `stock_nuevo` y calcula la cantidad como diferencia.
 El stock puede quedar negativo — es una señal de dato a corregir, no se clampea a 0.
 
+### Cálculos y atomicidad — todo en Supabase, el front solo muestra
+- **Todo cálculo de negocio (stock, cuenta corriente, saldos, totales guardados, resúmenes) lo hace Supabase** (trigger, vista o función). El front consulta y muestra.
+- **Única excepción deliberada:** los formularios de carga (venta nueva, compra, entrega) calculan subtotales y totales **en pantalla mientras se edita**, porque es más rápido. Lo que se **guarda** lo recalcula la base a partir de los ítems (`registrar_venta`, `registrar_entrega`). En compras, el monto real de la factura puede diferir de la suma de ítems a propósito (queda como `desperdicio`).
+- **Un flujo de varios pasos va en UNA función atómica** (RPC), no en llamadas sueltas desde el front: si una falla a la mitad no debe quedar nada. Hecho: venta nueva, entrega, anular venta, anular pago. Pendiente: compra, anular compra, ajuste de saldo, créditos IA.
+- Al convertir un flujo a RPC: **mismos pasos, mismo orden, mismos conceptos** que tenía el front, y probar la equivalencia (correr el flujo viejo y la función desde el mismo estado inicial y comparar todo lo que dejan: venta, ítems, CC con saldos, pagos, stock antes/después, saldo del cliente y estado de las ventas del cliente — el reparto FIFO modifica otras ventas).
+
+### Anulaciones (pagos y ventas)
+- No se edita ni se borra un movimiento: se **anula con un movimiento inverso enlazado** (`cuenta_corriente.revierte_a`) y un motivo (`anulacion_motivo`): `error_carga`, `cheque_rechazado`, `devolucion`, `otro` (este exige detalle).
+- Solo `error_carga` **se oculta** en el resumen del cliente y en el PDF (el par original + corrección), con el saldo recalculado por la base (`vista_cuenta_corriente_resumen`). Los otros motivos siempre se ven. La ficha tiene el filtro "Ocultar correcciones por error".
+- Un `error_carga` de más de `limite_dias` (7) solo se permite hasta `limpieza_hasta` (21/11/2026), con detalle, y queda marcado `anulacion_tardia`. Pasada esa fecha rige el límite de 7 días.
+- Los pagos nuevos se enlazan a su movimiento de CC (`pagos.movimiento_cc_id`); todo cobro nuevo debe completarlo. **Caja excluye los pagos `anulado`** (`.neq('estado','anulado')`): cualquier consulta nueva de ingresos debe hacer lo mismo.
+- Anular un pago **no reabre las ventas** que ese pago había cerrado (el saldo del cliente queda bien). Anular una venta cobrada al contado **no revierte el cobro**: hay que anular el pago aparte.
+
+### PDFs
+- Todos usan el logo liviano `LOGO_LIVIANO` (`/logo_catalogo.png`, 212×300) y `compress: true`. **Nunca usar `logo_ticket.png` (1414×2000) en un PDF**: jsPDF lo incrusta sin comprimir y cada PDF pesa ~11 MB. Con el liviano pesan 20–40 KB.
+- Los PDF reciben los datos ya calculados (saldos de la vista); no calculan.
+
 ### Estados de venta
 `presupuesto` → `pendiente` → `en_distribucion` → `entregada` | `cancelada` | `anulada`
 
@@ -215,6 +277,28 @@ El stock puede quedar negativo — es una señal de dato a corregir, no se clamp
 - Modales como componentes separados en `src/components/`
 - Lógica de negocio compartida en `src/hooks/`
 - Generación de PDFs e imágenes en `src/utils/`
+
+---
+
+## Migraciones y publicación (orden obligatorio)
+
+Las migraciones están en `supabase/migrations/`. Las `20261022*` ya están **aplicadas en producción**. La `20260101000000_remote_schema.sql` es solo el volcado para armar la base local: **no se aplica nunca en producción** (y, como `seed.sql` y `schema.sql`, está en `.gitignore`: tienen datos reales de clientes).
+
+Para publicar un cambio que toca la base:
+1. **Respaldo** de producción (`supabase db dump --linked` y `--data-only`, guardado **fuera del repo y de OneDrive**).
+2. **Aplicar la migración en producción** (MCP `apply_migration` o el SQL Editor de Supabase), en bloques chicos, **verificando después de cada una** (consultas de solo lectura: permisos, conteos, suma de saldos).
+3. **Recién después, mergear el PR** del front (eso despliega en Vercel).
+4. Verificar lo publicado.
+
+Por eso las migraciones deben ser **aditivas y compatibles con el front viejo** (columnas nuevas nulas, funciones nuevas): entre el paso 2 y el 3 el front viejo tiene que seguir funcionando. Si el front nuevo manda una columna que no existe, **fallan todos los cobros**.
+
+Rollback del front: en Vercel, *Promote* del deploy anterior (no toca la base).
+
+### Entorno local de pruebas
+- `supabase start` (Docker) levanta una copia de la base; se carga con el esquema y los datos volcados de producción. El trigger `on_auth_user_created` hay que crearlo a mano.
+- Correr la app contra la base local **sin tocar el `.env`**: pasar `VITE_SUPABASE_URL=http://127.0.0.1:54321` y `VITE_SUPABASE_ANON_KEY=<publishable local>` por variable de entorno al `vite` (las variables del shell pisan el `.env`). Verificar a dónde apunta antes de cargar nada.
+- Para probar con roles reales: usuario de prueba + `UPDATE profiles SET rol=…, activo=true`; en SQL, `SET LOCAL ROLE authenticated` + `set_config('request.jwt.claims', …)` dentro de una transacción con `ROLLBACK`.
+- **Producción solo se toca para aplicar y verificar**, nunca para desarrollar: cada prueba de venta/entrega/compra escribe saldos y stock reales.
 
 ---
 
@@ -236,7 +320,8 @@ En Vercel deben estar configuradas en: Settings → Environment Variables.
 
 El módulo de Promociones tiene dos partes:
 
-### n8n (workflow externo)
+### n8n (workflow externo) — **YA NO SE USA** (confirmado oct 2026)
+Lo que sigue es el diseño original; las vistas se mantienen pero nada externo las consulta. El rol anon ya no tiene acceso a nada en `public`.
 - Se ejecuta **cada lunes 8am** automáticamente
 - Consulta `vista_productos_para_promociones` y `vista_combos_frecuentes`
 - Llama a **GPT-4o** para generar 4 sugerencias
@@ -283,6 +368,24 @@ El módulo de Promociones tiene dos partes:
 - **Causa:** condición `< 0` invertida — en este sistema positivo = deuda
 - **Fix:** corregido en `pdfGenerator.ts` para clientes y proveedores
 
+### Cualquiera podía registrarse como administrador (octubre 2026) — CRÍTICO
+- **Causa:** `handle_new_user` tomaba el rol de `raw_user_meta_data->>'rol'` (lo manda quien se registra con la anon key pública) y la pantalla de registro dejaba elegirlo.
+- **Fix:** todo usuario nuevo nace `pendiente` e inactivo; un administrador lo aprueba por SQL. Se agregó `pendiente` a los roles válidos, se quitó el selector de rol y `ProtectedRoute` muestra el cartel `CuentaPendiente`.
+
+### Tablas sin RLS y políticas abiertas (octubre 2026) — CRÍTICO
+- **Causa:** 9 tablas sin RLS y con todos los permisos para `anon`; `clientes`, `productos`, `profiles` legibles y `ventas`/`venta_items` modificables sin iniciar sesión (políticas `{public}` con `true`); lectura de CC/pagos abierta a cualquier usuario autenticado (incluso pendiente); 4 vistas `SECURITY DEFINER` que salteaban el RLS.
+- **Fix:** RLS en todo con `private.es_personal()`, `REVOKE` a `anon` en todo `public`, vistas `security_invoker`. Ver "Seguridad y roles".
+
+### La venta de un vendedor no movía el stock (octubre 2026) — latente
+- **Causa:** `calcular_stock_movimiento` leía el stock con `SELECT … FOR UPDATE`, que para un vendedor no ve la fila (la política UPDATE de `productos` es solo admin/depósito): tomaba el stock previo como **0** y calculaba desde cero; y `sync_stock_producto` hacía un UPDATE que no afectaba filas. No se notaba porque hasta ahora los 3 usuarios eran admin.
+- **Fix:** ambos triggers pasaron a `SECURITY DEFINER`. El stock sigue protegido (`trg_proteger_stock_actual`).
+
+### PDF de ~11 MB (octubre 2026)
+- **Causa:** el logo de 1414×2000 se incrustaba sin comprimir. **Fix:** logo liviano + `compress: true` (ver PDFs).
+
+### Ventas y entregas a medias (octubre 2026)
+- **Causa:** el front hacía venta, ítems, cobro en CC y pago en llamadas sueltas y no chequeaba los errores del cobro: si algo fallaba quedaba una venta sin su cobro. **Fix:** `registrar_venta` y `registrar_entrega` (una transacción).
+
 ---
 
 ## Lo que NO hacer
@@ -297,12 +400,20 @@ El módulo de Promociones tiene dos partes:
 - ❌ Nunca calcular `saldo_acumulado` en el frontend ni hacer `UPDATE` manual de `saldo_actual` — lo hacen los triggers
 - ❌ Nunca escribir `productos.stock_actual` directo ni calcular `stock_anterior`/`stock_nuevo` en el frontend — se registra un movimiento y lo calcula el trigger
 - ❌ Nunca confiar en `ventas.total_pagado` — el trigger FIFO no lo actualiza
+- ❌ Nunca dar permisos a `anon` en `public` ni crear tablas, vistas o funciones accesibles sin sesión
+- ❌ Nunca crear una tabla sin RLS ni una vista `SECURITY DEFINER` en `public`
+- ❌ Nunca tomar un rol o permiso de lo que manda el cliente (`user_metadata`, parámetros)
+- ❌ Nunca escribir una función `SECURITY DEFINER` sin `SET search_path = public, pg_temp` y sin verificar el rol adentro
+- ❌ Nunca hacer en el front un cálculo de negocio que se guarda, ni un flujo de varios pasos con llamadas sueltas — va en una función atómica de la base
+- ❌ Nunca usar `logo_ticket.png` en un PDF
+- ❌ Nunca publicar el front (merge a `main`) antes de aplicar en producción las migraciones que necesita
+- ❌ Nunca borrar ni editar un movimiento de CC o un pago a mano: se anula con motivo
 
 ---
 
 ## Pendientes conocidos
 
-- [ ] Habilitar RLS en 9 tablas que lo tienen deshabilitado (`categorias`, `movimientos_stock`, `proveedores`, `compras`, `compra_items`, `categorias_gasto`, `gastos_recurrentes`, `gastos`, `caja_cierres`) — **prioritario:** la anon key es pública, RLS es lo único que protege esas tablas
+- [x] ~~Habilitar RLS en las 9 tablas abiertas~~ — hecho (oct 2026), junto con el cierre de políticas abiertas y el registro con rol
 - [ ] 29 ventas en estado `cancelada` con `total_pagado > 0` — la migración `fix_ventas_canceladas_bug_masivo` sólo corrigió las de `total_pagado = 0`. Las pagadas al ~100% deberían ser `entregada`; las de pago parcial requieren consultar al dueño
 - [ ] `trg_reconciliar_ventas_on_saldo_change` no actualiza `total_pagado` — hace inservible ese campo para reportes
 - [ ] Revisar las 2 anulaciones de compra de SANTIAGO LLADA (jun/jul 2026, $399.668) — no tienen cargo asociado en cuenta corriente, su efecto correcto sobre el saldo no es determinable sin saber cómo se cargaron esas compras
@@ -311,3 +422,14 @@ El módulo de Promociones tiene dos partes:
 - [x] ~~Compra errónea de Lomo del 06/05/2026 (250.900 kg)~~ — el stock ya fue corregido a mano (hoy 245 kg); el historial de `movimientos_stock` conserva la entrada errónea
 - [x] ~~Bife de chorizo con stock negativo~~ — ya no figura en negativo
 - [ ] Agregar `VITE_GEMINI_API_KEY` en Vercel para que funcione generación de imágenes en producción
+- [ ] **Atomicidad, fases 2 y 3:** compra nueva y anular compra (`NuevaCompra`, `ProveedorDetalle`), ajuste de saldo de cliente y de proveedor (lee el saldo, calcula la diferencia e inserta: carrera), créditos de IA (`useSistemaCreditos`). Mismo método que `registrar_venta`
+- [ ] **Editar la cantidad en la entrega no reajusta el stock** (si entregan menos de lo vendido, el stock queda como si se hubiera entregado todo). Preexistente; decidir con el negocio
+- [ ] Panel de Supabase Auth: **apagar el registro abierto** y **activar la protección contra contraseñas filtradas**
+- [ ] Mergear el commit que fija `pg_temp` en el `search_path` de los archivos `.sql` de las funciones `DEFINER` (producción ya tiene las versiones endurecidas; el repo en `main` no)
+- [ ] `REVOKE EXECUTE` a `authenticated` en `calcular_stock_movimiento` y `sync_stock_producto` (son funciones de trigger; no explotable por la API, pero conviene)
+- [ ] 16 funciones preexistentes sin `search_path` fijo (aviso del linter de Supabase)
+- [ ] `npm audit`: `jspdf` crítico (arreglo = versión 4, cambio mayor: probar todos los PDF) y `react-router`/`ws` con `npm audit fix` sin cambios mayores
+- [ ] Afinar el RLS por rol en las 9 tablas internas (hoy los 4 roles de personal leen y escriben igual)
+- [ ] `/anulaciones`: clasificar las 56 anulaciones históricas (24 de marzo/abril no tienen cargo y no se pueden ocultar); al terminar la limpieza (~21/11/2026) eliminar la pantalla
+- [ ] 6 productos con `stock_actual` distinto del `stock_nuevo` del último movimiento (desvío histórico, preexistente)
+- [ ] Los números de Dashboard, Caja, Proveedores, StockHistorial y fichas (sumas y acumulados) todavía se calculan en el cliente; mover a vistas/funciones de la base
