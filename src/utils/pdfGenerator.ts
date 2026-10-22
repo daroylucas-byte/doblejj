@@ -481,3 +481,115 @@ export const generatePurchaseTicket = (
         throw error;
     }
 };
+
+export type TipoPrecioCatalogo = 'precio_minorista' | 'precio_mayorista' | 'precio_revendedor';
+
+export interface ProductoCatalogo {
+    codigo?: string | null;
+    nombre: string;
+    unidad_medida: string;
+    categoria: string;
+    precio_minorista: number;
+    precio_mayorista: number;
+    precio_revendedor: number;
+}
+
+export const generateCatalogPDF = (
+    productos: ProductoCatalogo[],
+    tipoPrecio: TipoPrecioCatalogo,
+    titulo: string
+): Blob | null => {
+    try {
+        // El catálogo se comparte por WhatsApp: compresión activada y logo reducido
+        // (logo_ticket.png es de 1414x2000 y jsPDF lo incrusta sin comprimir: ~11 MB por página)
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+        const pageWidth = doc.internal.pageSize.width;
+        const pageHeight = doc.internal.pageSize.height;
+        const margin = 15;
+
+        try {
+            doc.addImage('/logo_catalogo.png', 'PNG', margin, 10, 30, 30, undefined, 'FAST');
+        } catch (e) {
+            console.warn("Logo not found", e);
+        }
+
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DOBLE JJ ABASTECIMIENTOS', pageWidth - margin, 15, { align: 'right' });
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Mayorista de Carnes', pageWidth - margin, 20, { align: 'right' });
+        doc.text('Dirección: Carlos Paz, Córdoba', pageWidth - margin, 24, { align: 'right' });
+        doc.text('Tel: 3541625537 / 3541625536', pageWidth - margin, 28, { align: 'right' });
+
+        doc.line(margin, 42, pageWidth - margin, 42);
+
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(titulo.toUpperCase(), pageWidth / 2, 52, { align: 'center' });
+
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Fecha: ${format(new Date(), 'dd/MM/yyyy')}`, pageWidth / 2, 58, { align: 'center' });
+
+        const porCategoria = new Map<string, ProductoCatalogo[]>();
+        productos.forEach(p => {
+            const lista = porCategoria.get(p.categoria) || [];
+            lista.push(p);
+            porCategoria.set(p.categoria, lista);
+        });
+
+        const body: any[] = [];
+        Array.from(porCategoria.keys())
+            .sort((a, b) => a.localeCompare(b, 'es'))
+            .forEach(cat => {
+                body.push([{
+                    content: cat.toUpperCase(),
+                    colSpan: 4,
+                    styles: { fillColor: [245, 245, 245], fontStyle: 'bold', textColor: [60, 60, 60] }
+                }]);
+                porCategoria.get(cat)!
+                    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+                    .forEach(p => {
+                        body.push([
+                            p.codigo || '-',
+                            p.nombre,
+                            p.unidad_medida,
+                            `$ ${p[tipoPrecio].toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                        ]);
+                    });
+            });
+
+        autoTable(doc, {
+            startY: 64,
+            head: [['Código', 'Producto', 'Unidad', 'Precio']],
+            body,
+            theme: 'striped',
+            headStyles: { fillColor: [240, 100, 30], textColor: [255, 255, 255] },
+            styles: { fontSize: 9, cellPadding: 2.5 },
+            columnStyles: {
+                0: { cellWidth: 25 },
+                1: { cellWidth: 'auto' },
+                2: { cellWidth: 25 },
+                3: { halign: 'right', cellWidth: 35, fontStyle: 'bold' }
+            }
+        });
+
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'italic');
+            doc.setTextColor(150);
+            doc.text('Precios sujetos a modificación sin previo aviso.', margin, pageHeight - 10);
+            doc.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
+        }
+
+        return doc.output('blob');
+    } catch (error) {
+        console.error("Error generating Catalog PDF:", error);
+        alert("Error al generar el PDF del catálogo.");
+        return null;
+    }
+};
