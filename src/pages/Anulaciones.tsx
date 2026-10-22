@@ -38,6 +38,8 @@ const Anulaciones: React.FC = () => {
     const [tab, setTab] = useState<'registro' | 'sin_clasificar'>('registro');
     const [registro, setRegistro] = useState<Anulacion[]>([]);
     const [sinClasificar, setSinClasificar] = useState<Anulacion[]>([]);
+    // Conteos calculados por la base (vista_anulaciones_estadisticas)
+    const [stats, setStats] = useState<{ dimension: string; clave: string; cantidad: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [filtroMotivo, setFiltroMotivo] = useState<string>('Todos');
@@ -48,7 +50,7 @@ const Anulaciones: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            const [reg, sin] = await Promise.all([
+            const [reg, sin, est] = await Promise.all([
                 supabase
                     .from('cuenta_corriente')
                     .select(SELECT)
@@ -63,11 +65,14 @@ const Anulaciones: React.FC = () => {
                     .is('anulacion_motivo', null)
                     .order('fecha', { ascending: false })
                     .limit(1000),
+                supabase.from('vista_anulaciones_estadisticas').select('dimension, clave, cantidad'),
             ]);
             if (reg.error) throw reg.error;
             if (sin.error) throw sin.error;
+            if (est.error) throw est.error;
             setRegistro((reg.data || []) as unknown as Anulacion[]);
             setSinClasificar((sin.data || []) as unknown as Anulacion[]);
+            setStats((est.data || []) as { dimension: string; clave: string; cantidad: number }[]);
         } catch (err: any) {
             console.error('Error cargando anulaciones:', err);
             setError(err.message || 'Error al cargar las anulaciones');
@@ -88,19 +93,10 @@ const Anulaciones: React.FC = () => {
         [registro, filtroMotivo, soloTardias]
     );
 
-    const porMotivo = useMemo(() => {
-        const cuenta = new Map<string, number>();
-        registro.forEach(a => cuenta.set(a.anulacion_motivo ?? '—', (cuenta.get(a.anulacion_motivo ?? '—') ?? 0) + 1));
-        return cuenta;
-    }, [registro]);
-
-    const porUsuario = useMemo(() => {
-        const cuenta = new Map<string, number>();
-        registro.forEach(a => cuenta.set(nombreUsuario(a), (cuenta.get(nombreUsuario(a)) ?? 0) + 1));
-        return Array.from(cuenta.entries()).sort((a, b) => b[1] - a[1]);
-    }, [registro]);
-
-    const tardias = registro.filter(a => a.anulacion_tardia).length;
+    // Solo lectura de lo que calculó la base
+    const cantidad = (dimension: string, clave = '') =>
+        stats.find(s => s.dimension === dimension && s.clave === clave)?.cantidad ?? 0;
+    const porUsuario = stats.filter(s => s.dimension === 'usuario').sort((a, b) => b.cantidad - a.cantidad);
 
     const clasificar = async (motivo: MotivoAnulacion, detalle: string | null) => {
         if (!aClasificar) return;
@@ -132,21 +128,21 @@ const Anulaciones: React.FC = () => {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Anulaciones registradas</p>
-                        <p className="text-2xl font-black">{registro.length}</p>
+                        <p className="text-2xl font-black">{cantidad('total')}</p>
                     </div>
                     <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sin clasificar (históricas)</p>
-                        <p className="text-2xl font-black text-amber-600">{sinClasificar.length}</p>
+                        <p className="text-2xl font-black text-amber-600">{cantidad('sin_clasificar')}</p>
                     </div>
                     <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tardías</p>
-                        <p className="text-2xl font-black">{tardias}</p>
+                        <p className="text-2xl font-black">{cantidad('tardias')}</p>
                     </div>
                     <div className="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Por usuario</p>
                         <div className="text-xs font-bold space-y-0.5 mt-1 max-h-16 overflow-y-auto">
-                            {porUsuario.length === 0 ? '—' : porUsuario.map(([nombre, n]) => (
-                                <div key={nombre} className="flex justify-between gap-2"><span className="truncate">{nombre}</span><span>{n}</span></div>
+                            {porUsuario.length === 0 ? '—' : porUsuario.map(u => (
+                                <div key={u.clave} className="flex justify-between gap-2"><span className="truncate">{u.clave}</span><span>{u.cantidad}</span></div>
                             ))}
                         </div>
                     </div>
@@ -164,7 +160,7 @@ const Anulaciones: React.FC = () => {
                             onClick={() => setTab('sin_clasificar')}
                             className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all ${tab === 'sin_clasificar' ? 'border-primary text-primary' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                         >
-                            Ventas anuladas sin clasificar ({sinClasificar.length})
+                            Ventas anuladas sin clasificar ({cantidad('sin_clasificar')})
                         </button>
                     </div>
 
@@ -178,7 +174,7 @@ const Anulaciones: React.FC = () => {
                                 >
                                     <option value="Todos">Todos los motivos</option>
                                     {MOTIVOS_ANULACION.map(m => (
-                                        <option key={m.value} value={m.value}>{m.label} ({porMotivo.get(m.value) ?? 0})</option>
+                                        <option key={m.value} value={m.value}>{m.label} ({cantidad('motivo', m.value)})</option>
                                     ))}
                                 </select>
                                 <label className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500 cursor-pointer">
