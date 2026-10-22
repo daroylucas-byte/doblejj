@@ -3,6 +3,10 @@ import autoTable from 'jspdf-autotable';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+// Logo reducido (212x300) para todos los PDF. logo_ticket.png es de 1414x2000 y jsPDF lo incrusta sin
+// comprimir: cada PDF pesaba ~11 MB aunque fuera de una sola página, y no se podía compartir.
+const LOGO_LIVIANO = '/logo_catalogo.png';
+
 
 interface VentaItem {
     id?: string;
@@ -39,7 +43,8 @@ export const generateSaleTicket = (venta: Venta, items: VentaItem[], aclaracion?
     try {
         const doc = new jsPDF({
             unit: 'mm',
-            format: [72, 290] // Thermal ticket format (72mm width x 290mm height)
+            format: [72, 290], // Thermal ticket format (72mm width x 290mm height)
+            compress: true
         });
 
         const pageWidth = doc.internal.pageSize.width;
@@ -48,7 +53,7 @@ export const generateSaleTicket = (venta: Venta, items: VentaItem[], aclaracion?
         // Logo
         try {
             // We use the logo from the public folder
-            doc.addImage('/logo_ticket.png', 'PNG', (pageWidth - 20) / 2, 5, 20, 20);
+            doc.addImage(LOGO_LIVIANO, 'PNG', (pageWidth - 20) / 2, 5, 20, 20, undefined, 'FAST');
         } catch (e) {
             console.warn("Logo not found, skipping...", e);
         }
@@ -161,7 +166,8 @@ export const generateClientStatement = (
     try {
         const doc = new jsPDF({
             unit: 'mm',
-            format: 'a4'
+            format: 'a4',
+            compress: true
         });
 
         const pageWidth = doc.internal.pageSize.width;
@@ -169,7 +175,7 @@ export const generateClientStatement = (
 
         // Logo
         try {
-            doc.addImage('/logo_ticket.png', 'PNG', margin, 10, 30, 30);
+            doc.addImage(LOGO_LIVIANO, 'PNG', margin, 10, 30, 30, undefined, 'FAST');
         } catch (e) {
             console.warn("Logo not found", e);
         }
@@ -289,7 +295,8 @@ export const generateSupplierStatement = (
     try {
         const doc = new jsPDF({
             unit: 'mm',
-            format: 'a4'
+            format: 'a4',
+            compress: true
         });
 
         const pageWidth = doc.internal.pageSize.width;
@@ -297,7 +304,7 @@ export const generateSupplierStatement = (
 
         // Logo
         try {
-            doc.addImage('/logo_ticket.png', 'PNG', margin, 10, 30, 30);
+            doc.addImage(LOGO_LIVIANO, 'PNG', margin, 10, 30, 30, undefined, 'FAST');
         } catch (e) {
             console.warn("Logo not found", e);
         }
@@ -417,12 +424,12 @@ export const generatePurchaseTicket = (
     proveedor: { razon_social: string; cuit?: string }
 ) => {
     try {
-        const doc = new jsPDF({ unit: 'mm', format: [72, 290] });
+        const doc = new jsPDF({ unit: 'mm', format: [72, 290], compress: true });
         const pageWidth = doc.internal.pageSize.width;
         const margin = 4;
 
         try {
-            doc.addImage('/logo_ticket.png', 'PNG', (pageWidth - 20) / 2, 5, 20, 20);
+            doc.addImage(LOGO_LIVIANO, 'PNG', (pageWidth - 20) / 2, 5, 20, 20, undefined, 'FAST');
         } catch (e) { /* logo opcional */ }
 
         doc.setFontSize(11);
@@ -508,7 +515,7 @@ export const generateCatalogPDF = (
         const margin = 15;
 
         try {
-            doc.addImage('/logo_catalogo.png', 'PNG', margin, 10, 30, 30, undefined, 'FAST');
+            doc.addImage(LOGO_LIVIANO, 'PNG', margin, 10, 30, 30, undefined, 'FAST');
         } catch (e) {
             console.warn("Logo not found", e);
         }
