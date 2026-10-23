@@ -65,6 +65,7 @@ const ProveedorDetalle: React.FC = () => {
     const [showAjusteModal, setShowAjusteModal] = useState(false);
     const [showPagoModal, setShowPagoModal] = useState(false);
     const [nuevoSaldoReal, setNuevoSaldoReal] = useState('');
+    const [tipoSaldoReal, setTipoSaldoReal] = useState<'deuda' | 'favor'>('deuda');
     const [conceptoAjuste, setConceptoAjuste] = useState('Saldo Anterior');
     const [procesandoAjuste, setProcesandoAjuste] = useState(false);
     const [activeTab, setActiveTab] = useState<'movimientos' | 'compras' | 'stats'>('movimientos');
@@ -252,51 +253,21 @@ const ProveedorDetalle: React.FC = () => {
 
         setProcesandoAjuste(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            // Convención: positivo = se le debe al proveedor, negativo = saldo a favor.
+            // La base compara con el saldo real, decide si es cargo o pago y registra la diferencia.
+            const saldoFinal = Math.abs(Number(nuevoSaldoReal)) * (tipoSaldoReal === 'favor' ? -1 : 1);
 
-            // CONVENTION: Positive = Debt, Negative = Credit (Favor)
-            // We use the same sign as the UI for consistency.
-            const inputSaldo = Number(nuevoSaldoReal);
-            const targetSaldo = inputSaldo;
+            const { error: rpcErr } = await supabase.rpc('ajustar_saldo_proveedor', {
+                p_proveedor_id: id,
+                p_saldo_objetivo: saldoFinal,
+                p_concepto: conceptoAjuste || 'Ajuste de Saldo'
+            });
 
-            // Releer el saldo de la BD: el trigger calcula el nuevo saldo sumando este delta,
-            // así que un valor viejo en pantalla daría un resultado distinto al pedido.
-            const { data: provActual } = await supabase
-                .from('proveedores')
-                .select('saldo_actual')
-                .eq('id', id)
-                .single();
-
-            const currentSaldo = Number(provActual?.saldo_actual ?? proveedor.saldo_actual);
-            const delta = targetSaldo - currentSaldo;
-
-            if (delta === 0) {
-                setShowAjusteModal(false);
-                return;
-            }
-
-            // Si el delta es positivo, aumenta la deuda -> CARGO
-            // Si el delta es negativo, disminuye la deuda o aumenta el crédito -> PAGO
-            const tipo: 'cargo' | 'pago' = delta > 0 ? 'cargo' : 'pago';
-            const monto = delta; // El monto se suma directamente al saldo acumulado
-
-            // El trigger calcula saldo_acumulado (saldo previo + delta) y sincroniza
-            // proveedores.saldo_actual.
-            const { error: insertErr } = await supabase
-                .from('cuenta_corriente_proveedores')
-                .insert([{
-                    proveedor_id: id,
-                    fecha: format(new Date(), 'yyyy-MM-dd'),
-                    tipo,
-                    concepto: conceptoAjuste || 'Ajuste de Saldo',
-                    monto,
-                    usuario_id: user?.id
-                }]);
-
-            if (insertErr) throw insertErr;
+            if (rpcErr) throw rpcErr;
 
             setShowAjusteModal(false);
             setNuevoSaldoReal('');
+            setTipoSaldoReal('deuda');
             setConceptoAjuste('Ajuste de Saldo');
             fetchData();
         } catch (error) {
@@ -726,23 +697,49 @@ const ProveedorDetalle: React.FC = () => {
 
                             <div className="space-y-4">
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nuevo Saldo Real</label>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Saldo final correcto</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {([['deuda', 'Le debo al proveedor'], ['favor', 'Tengo saldo a favor']] as const).map(([valor, texto]) => (
+                                            <button
+                                                key={valor}
+                                                type="button"
+                                                onClick={() => setTipoSaldoReal(valor)}
+                                                className={`py-2.5 rounded-xl border-2 text-[10px] font-black uppercase tracking-wider transition-all ${tipoSaldoReal === valor
+                                                    ? (valor === 'deuda' ? 'border-red-500 bg-red-500/10 text-red-600' : 'border-green-500 bg-green-500/10 text-green-600')
+                                                    : 'border-slate-100 dark:border-zinc-800 text-slate-400'}`}
+                                            >
+                                                {texto}
+                                            </button>
+                                        ))}
+                                    </div>
                                     <div className="relative">
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                                         <input
                                             autoFocus
                                             type="number"
                                             step="0.01"
+                                            min="0"
                                             value={nuevoSaldoReal}
-                                            onChange={(e) => setNuevoSaldoReal(e.target.value)}
+                                            onChange={(e) => setNuevoSaldoReal(e.target.value.replace('-', ''))}
                                             placeholder="0.00"
                                             className="w-full pl-8 pr-4 py-3 rounded-xl border-2 border-slate-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-lg font-black outline-none focus:border-primary transition-all"
                                             required
                                         />
                                     </div>
-                                    <p className="text-[9px] text-slate-400 font-bold italic ml-1">
-                                        * Ingresa el monto final de DEUDA con el proveedor (usa "-" si es saldo a tu favor).
-                                    </p>
+                                    {/* Vista previa; lo que se registra lo calcula la base con el saldo real */}
+                                    {nuevoSaldoReal !== '' && (() => {
+                                        const objetivo = Math.abs(Number(nuevoSaldoReal)) * (tipoSaldoReal === 'favor' ? -1 : 1);
+                                        const diferencia = objetivo - Number(proveedor.saldo_actual);
+                                        return (
+                                            <p className="text-[11px] font-bold ml-1 text-slate-500">
+                                                {Math.abs(diferencia) < 0.005
+                                                    ? 'El saldo ya es ese: no se registra nada.'
+                                                    : diferencia > 0
+                                                        ? `Se registra un cargo de $ ${diferencia.toLocaleString()} (aumenta lo que le debés).`
+                                                        : `Se registra un pago de $ ${Math.abs(diferencia).toLocaleString()} (baja lo que le debés).`}
+                                            </p>
+                                        );
+                                    })()}
                                 </div>
 
                                 <div className="space-y-1.5">
