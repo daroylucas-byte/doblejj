@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -41,10 +41,6 @@ const Clientes: React.FC = () => {
 
             query = query.eq('activo', activeTab === 'activos');
 
-            if (searchTerm) {
-                query = query.or(`razon_social.ilike.%${searchTerm}%,cuit.ilike.%${searchTerm}%,nombre_fantasia.ilike.%${searchTerm}%`);
-            }
-
             if (filterTipo !== 'Todos') {
                 query = query.eq('tipo', filterTipo.toLowerCase());
             }
@@ -57,11 +53,21 @@ const Clientes: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [searchTerm, filterTipo, activeTab]);
+    }, [filterTipo, activeTab]);
 
     useEffect(() => {
         fetchClientes();
     }, [fetchClientes]);
+
+    // La búsqueda de texto se filtra en memoria: la lista ya está cargada y
+    // evita un viaje a la base por cada letra que se escribe.
+    const clientesFiltrados = useMemo(() => {
+        const q = searchTerm.trim().toLowerCase();
+        if (!q) return clientes;
+        return clientes.filter(c =>
+            [c.razon_social, c.cuit, c.nombre_fantasia].some(v => (v ?? '').toLowerCase().includes(q))
+        );
+    }, [clientes, searchTerm]);
 
     const handleEdit = (cliente: Cliente) => {
         setSelectedCliente(cliente);
@@ -174,7 +180,7 @@ const Clientes: React.FC = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ) : clientes.length === 0 ? (
+                                ) : clientesFiltrados.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
                                             <span className="material-symbols-outlined text-4xl mb-2 block">person_search</span>
@@ -182,7 +188,7 @@ const Clientes: React.FC = () => {
                                         </td>
                                     </tr>
                                 ) : (
-                                    clientes.map((cliente) => (
+                                    clientesFiltrados.map((cliente) => (
                                         <tr
                                             key={cliente.id}
                                             className="group hover:bg-slate-50 dark:hover:bg-zinc-800/30 transition-colors"

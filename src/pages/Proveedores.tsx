@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import MainHeader from '../components/MainHeader';
@@ -29,77 +29,54 @@ const Proveedores: React.FC = () => {
     const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null);
     const [pagoProveedor, setPagoProveedor] = useState<Proveedor | null>(null);
 
-    const [stats, setStats] = useState({
-        totalDeuda: 0,
-        proveedoresActivos: 0,
-        ordenesPendientes: 0
-    });
-
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            let query = supabase.from('proveedores').select('*').order('razon_social');
-
-            if (searchTerm) {
-                query = query.or(`razon_social.ilike.%${searchTerm}%,cuit.ilike.%${searchTerm}%`);
-            }
-            if (categoryFilter) {
-                query = query.eq('categoria_proveedor', categoryFilter);
-            }
-            
-            // Status filter logic remains on the DB side for initial fetch
-            if (statusFilter === 'debt') {
-                query = query.lt('saldo_actual', 0);
-            } else if (statusFilter === 'no-debt') {
-                query = query.gte('saldo_actual', 0);
-            }
-
-            const { data, error } = await query;
+            // Se cargan todos los proveedores una sola vez; búsqueda y filtros se aplican en memoria.
+            const [{ data, error }, { data: saldosData }] = await Promise.all([
+                supabase.from('proveedores').select('*').order('razon_social'),
+                // Saldo de cada proveedor calculado por la base (suma de la cuenta corriente)
+                supabase.from('vista_saldos_proveedores').select('proveedor_id, saldo')
+            ]);
             if (error) throw error;
 
-            // BUG 1 FIX: Fetch real dynamic balances from the view
-            const { data: saldosData } = await supabase
-                .from('vista_cuenta_corriente_proveedores')
-                .select('proveedor_id, saldo_acumulado')
-                .order('fecha', { ascending: false })
-                .order('created_at', { ascending: false });
-
-            // Quedarse con el saldo más reciente por proveedor (el primero en DESC)
             const saldosPorProveedor: Record<string, number> = {};
-            (saldosData || []).forEach(m => {
-                if (!(m.proveedor_id in saldosPorProveedor)) {
-                    saldosPorProveedor[m.proveedor_id] = m.saldo_acumulado;
-                }
+            (saldosData || []).forEach(s => {
+                saldosPorProveedor[s.proveedor_id] = Number(s.saldo);
             });
 
-            // Mergear con los proveedores y usar convención vista: positivo = deuda
-            const proveedoresConSaldo = (data || []).map(p => ({
+            // Convención vista: positivo = deuda
+            setProveedores((data || []).map(p => ({
                 ...p,
                 saldo_actual: saldosPorProveedor[p.id] ?? p.saldo_actual
-            }));
-
-            setProveedores(proveedoresConSaldo);
-
-            // Calculate basic stats using the new convention (positive = debt)
-            const total = proveedoresConSaldo.reduce((acc, curr) => acc + (curr.saldo_actual > 0 ? curr.saldo_actual : 0), 0);
-            const activos = (data || []).filter(p => p.activo).length;
-
-            setStats({
-                totalDeuda: total,
-                proveedoresActivos: activos,
-                ordenesPendientes: 0 // This would come from a 'compras' table check
-            });
-
+            })));
         } catch (error) {
             console.error('Error fetching suppliers:', error);
         } finally {
             setLoading(false);
         }
-    }, [searchTerm, categoryFilter, statusFilter]);
+    }, []);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    const proveedoresFiltrados = useMemo(() => {
+        const q = searchTerm.trim().toLowerCase();
+        return proveedores.filter(p => {
+            if (q && ![p.razon_social, p.cuit].some(v => (v ?? '').toLowerCase().includes(q))) return false;
+            if (categoryFilter && p.categoria_proveedor !== categoryFilter) return false;
+            if (statusFilter === 'active' && !p.activo) return false;
+            if (statusFilter === 'debt' && !(p.saldo_actual > 0)) return false;
+            if (statusFilter === 'no-debt' && !(p.saldo_actual <= 0)) return false;
+            return true;
+        });
+    }, [proveedores, searchTerm, categoryFilter, statusFilter]);
+
+    const stats = useMemo(() => ({
+        totalDeuda: proveedoresFiltrados.reduce((acc, p) => acc + (p.saldo_actual > 0 ? p.saldo_actual : 0), 0),
+        proveedoresActivos: proveedoresFiltrados.filter(p => p.activo).length
+    }), [proveedoresFiltrados]);
 
     const handleAdd = () => {
         setEditingProveedor(null);
@@ -242,7 +219,7 @@ const Proveedores: React.FC = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ) : proveedores.length === 0 ? (
+                                ) : proveedoresFiltrados.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
                                             <span className="material-symbols-outlined text-4xl mb-2 block opacity-20">local_shipping</span>
@@ -250,7 +227,7 @@ const Proveedores: React.FC = () => {
                                         </td>
                                     </tr>
                                 ) : (
-                                    proveedores.map((p) => (
+                                    proveedoresFiltrados.map((p) => (
                                         <tr key={p.id} className="group hover:bg-slate-50 dark:hover:bg-zinc-800/40 transition-colors">
                                             <td className="px-6 py-4">
                                                 <div className="font-bold text-slate-900 dark:text-white capitalize">{p.razon_social}</div>
