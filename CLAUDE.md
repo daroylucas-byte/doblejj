@@ -133,6 +133,7 @@ supabase/
 | `vista_cuenta_corriente` | CC de clientes con `saldo_acumulado` recalculado dinámicamente |
 | `vista_cuenta_corriente_proveedores` | CC de proveedores |
 | `vista_cuenta_corriente_resumen` | **La que usa la ficha del cliente.** Movimientos con `saldo_acumulado_historico`, `oculto_en_resumen`, `saldo_resumen` (saldo sin el efecto de los errores de carga corregidos), `anulado_motivo`, `anulacion_tardia` |
+| `vista_saldos_proveedores` | **Saldo de cada proveedor** (una fila por proveedor): suma de la cuenta corriente (`cargo`/`nota_debito` suman, `pago`/`nota_credito` restan, con `abs(monto)`). Es el saldo que muestra el listado y la ficha del proveedor. Positivo = deuda |
 | `vista_anulaciones_estadisticas` | Conteos de la pantalla `/anulaciones` (total, tardías, por motivo, por usuario, sin clasificar) |
 | `vista_productos_para_promociones` | Productos con clasificación de stock (la usaba n8n) |
 | `vista_combos_frecuentes` | Pares de productos comprados juntos (la usaba n8n) |
@@ -162,6 +163,7 @@ supabase/
 | `anular_venta(venta, motivo, detalle)` | Anula una venta (estado `cancelada` + nota de crédito enlazada con motivo). El trigger devuelve el stock | INVOKER |
 | `anular_movimiento_pago(movimiento_cc, motivo, detalle)` | Anula un pago: `nota_debito` enlazada + `pagos.estado = 'anulado'`. Funciona también con pagos viejos sin enlace (coincidencia única o solo en CC). Valida rol admin/vendedor | DEFINER |
 | `clasificar_anulacion_historica(nota_credito, motivo, detalle)` | Etiqueta una anulación de venta anterior al sistema de motivos (solo agrega la etiqueta). Valida rol admin/vendedor | DEFINER |
+| `ajustar_saldo_proveedor(proveedor, saldo_objetivo, concepto)` | El usuario indica el **saldo final** y la base decide si registra un `cargo` o un `pago` por la diferencia (no registra nada si ya es ese saldo). La diferencia se calcula contra el saldo **visible** (suma de la cuenta corriente), no contra `proveedores.saldo_actual`. Bloquea la fila del proveedor. Devuelve `{ajustado, saldo_anterior, diferencia, tipo, saldo_nuevo}` | INVOKER |
 | `update_supplier_balance(prov_id, amount, is_payment)` | Heredada, la usa `NuevaCompra`. Su resultado correcto depende de los triggers de CC de proveedores | INVOKER |
 
 ---
@@ -257,6 +259,16 @@ El stock puede quedar negativo — es una señal de dato a corregir, no se clamp
 - **Única excepción deliberada:** los formularios de carga (venta nueva, compra, entrega) calculan subtotales y totales **en pantalla mientras se edita**, porque es más rápido. Lo que se **guarda** lo recalcula la base a partir de los ítems (`registrar_venta`, `registrar_entrega`). En compras, el monto real de la factura puede diferir de la suma de ítems a propósito (queda como `desperdicio`).
 - **Un flujo de varios pasos va en UNA función atómica** (RPC), no en llamadas sueltas desde el front: si una falla a la mitad no debe quedar nada. Hecho: venta nueva, entrega, anular venta, anular pago. Pendiente: compra, anular compra, ajuste de saldo, créditos IA.
 - Al convertir un flujo a RPC: **mismos pasos, mismo orden, mismos conceptos** que tenía el front, y probar la equivalencia (correr el flujo viejo y la función desde el mismo estado inicial y comparar todo lo que dejan: venta, ítems, CC con saldos, pagos, stock antes/después, saldo del cliente y estado de las ventas del cliente — el reparto FIFO modifica otras ventas).
+
+### Saldo de proveedores — dos saldos que NO coinciden (ojo)
+- Para **proveedores** el saldo que ve el usuario (listado, ficha, ajuste) es la **suma de la cuenta corriente** (`vista_saldos_proveedores`; en la ficha, `saldo_acumulado` de `vista_cuenta_corriente_proveedores`). **No** usar `proveedores.saldo_actual` ni `saldo_acumulado_historico` para mostrar o calcular: difieren en 12 de 16 proveedores por datos históricos con montos de signo invertido (459 de 545 cargos con monto negativo; un "Saldo Anterior" de TARU por −6.141.507.676 del 12/05/2026). Esto es lo contrario de la regla de clientes (ahí sí se usa `saldo_acumulado_historico`).
+- Todo ajuste de saldo de proveedor pasa por `ajustar_saldo_proveedor`. El modal pide el saldo final con selector "Le debo al proveedor / Tengo saldo a favor" y muestra una vista previa; el front no manda signos.
+- Corregir esa diferencia (alinear `proveedores.saldo_actual` con la suma) es un UPDATE masivo en producción: requiere respaldo y revisar proveedor por proveedor con el dueño.
+
+### Búsquedas y listados
+- Las listas chicas (clientes ~100, proveedores ~16) se **cargan una vez y se filtran en memoria** (`useMemo`): nunca una consulta a la base por cada letra tipeada. La latencia hasta Supabase (us-west-2) es de cientos de ms por viaje; la consulta en sí tarda 1–18 ms.
+- No traer tablas de movimientos enteras para sacar un número: PostgREST corta en **1.000 filas** sin avisar. Usar una vista agregada (ej. `vista_saldos_proveedores`).
+- Hay índices en las claves foráneas más consultadas (`idx_*`). Al crear una tabla o clave foránea nueva, indexarla.
 
 ### Anulaciones (pagos y ventas)
 - No se edita ni se borra un movimiento: se **anula con un movimiento inverso enlazado** (`cuenta_corriente.revierte_a`) y un motivo (`anulacion_motivo`): `error_carga`, `cheque_rechazado`, `devolucion`, `otro` (este exige detalle).
@@ -422,7 +434,10 @@ Lo que sigue es el diseño original; las vistas se mantienen pero nada externo l
 - [x] ~~Compra errónea de Lomo del 06/05/2026 (250.900 kg)~~ — el stock ya fue corregido a mano (hoy 245 kg); el historial de `movimientos_stock` conserva la entrada errónea
 - [x] ~~Bife de chorizo con stock negativo~~ — ya no figura en negativo
 - [ ] Agregar `VITE_GEMINI_API_KEY` en Vercel para que funcione generación de imágenes en producción
-- [ ] **Atomicidad, fases 2 y 3:** compra nueva y anular compra (`NuevaCompra`, `ProveedorDetalle`), ajuste de saldo de cliente y de proveedor (lee el saldo, calcula la diferencia e inserta: carrera), créditos de IA (`useSistemaCreditos`). Mismo método que `registrar_venta`
+- [ ] **Atomicidad, fases 2 y 3:** compra nueva y anular compra (`NuevaCompra`, `ProveedorDetalle`), ajuste de saldo de **cliente** (lee el saldo, calcula la diferencia e inserta: carrera; el de proveedor ya es `ajustar_saldo_proveedor`), créditos de IA (`useSistemaCreditos`). Mismo método que `registrar_venta`
+- [ ] **Saldos de proveedores desalineados:** `proveedores.saldo_actual` / `saldo_acumulado_historico` difieren de la suma de la cuenta corriente en 12 de 16 proveedores (ver "Saldo de proveedores"). Decidir con el dueño el saldo real de cada uno y corregir con respaldo previo. Mientras tanto, nada nuevo debe leer `proveedores.saldo_actual`
+- [ ] Ficha del proveedor: los cuadros "Total pagado / Total compras / Balance de período" se suman en el front y con ajustes grandes dan números raros. Moverlos a la base
+- [ ] El ajuste de saldo de la ficha tiene dos accesos al mismo modal (lápiz de la tarjeta y botón "Ajustar saldo"); dejar uno solo
 - [ ] **Editar la cantidad en la entrega no reajusta el stock** (si entregan menos de lo vendido, el stock queda como si se hubiera entregado todo). Preexistente; decidir con el negocio
 - [ ] Panel de Supabase Auth: **apagar el registro abierto** y **activar la protección contra contraseñas filtradas**
 - [ ] Mergear el commit que fija `pg_temp` en el `search_path` de los archivos `.sql` de las funciones `DEFINER` (producción ya tiene las versiones endurecidas; el repo en `main` no)
