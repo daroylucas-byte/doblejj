@@ -379,7 +379,8 @@ const ProveedorDetalle: React.FC = () => {
                                 <h3 className="text-[10px] font-black uppercase tracking-widest opacity-80">Saldo en Cuenta Cte</h3>
                                 <button
                                     onClick={() => {
-                                        setNuevoSaldoReal(proveedor.saldo_actual.toString());
+                                        setNuevoSaldoReal('');
+                                        setTipoSaldoReal(proveedor.saldo_actual > 0 ? 'deuda' : 'favor');
                                         setShowAjusteModal(true);
                                     }}
                                     className="p-1 rounded-full bg-white/20 hover:bg-white/40 transition-colors"
@@ -521,7 +522,11 @@ const ProveedorDetalle: React.FC = () => {
                                                     Exportar PDF
                                                 </button>
                                                 <button
-                                                    onClick={() => setShowAjusteModal(true)}
+                                                    onClick={() => {
+                                                        setNuevoSaldoReal('');
+                                                        setTipoSaldoReal(proveedor.saldo_actual > 0 ? 'deuda' : 'favor');
+                                                        setShowAjusteModal(true);
+                                                    }}
                                                     className="h-8 px-3 bg-slate-100 dark:bg-zinc-800 text-slate-500 hover:text-primary text-[9px] font-black uppercase tracking-widest rounded-lg transition-all"
                                                 >
                                                     Ajustar Saldo
